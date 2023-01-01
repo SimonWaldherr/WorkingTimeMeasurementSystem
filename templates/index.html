@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Time Tracking System</title>
+</head>
+<body>
+    <h1>Time Tracking System</h1>
+    <ul>
+        <li><a href="/addUser">add User</a></li>
+        <li><a href="/addActivity">add Activity</a></li>
+        <li><a href="/addDepartment">add Department</a></li>
+        <li></li>
+        <li><a href="/work_hours">work hours overview</a></li>
+        <li><a href="/current_status">current employee status</a></li>
+    </ul>
+
+    <h2>Clock In/Out</h2>
+    
+    <form action="/clockInOut" method="post">
+        <label for="user_id">User:</label>
+        <select name="user_id" id="user_id">
+            {{range .Users}}
+            <option value="{{.ID}}">{{.Name}}</option>
+            {{end}}
+        </select>
+        
+        <label for="activity_id">Activity:</label>
+        <select name="activity_id" id="activity_id">
+            {{range .Activities}}
+            <option value="{{.ID}}">{{.Status}}</option>
+            {{end}}
+        </select>
+        
+        <input type="submit" value="Clock In/Out">
+    </form>
+</body>
+</html>
