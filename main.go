@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"encoding/base64"
+	"encoding/csv"
+	"fmt"
 	"html/template"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -23,23 +29,109 @@ type CurrentStatusData struct {
 	Date     string
 }
 
+type AuthUser struct {
+	Username string
+	Password string
+	Role     string
+}
+
+func loadCredentials(filename string) (map[string]AuthUser, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.Comma = ';'
+	reader.FieldsPerRecord = 3
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	users := make(map[string]AuthUser)
+	for _, record := range records {
+		users[record[0]] = AuthUser{
+			Username: record[0],
+			Password: record[1],
+			Role:     record[2],
+		}
+	}
+	return users, nil
+}
+
+func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			unauthorized(w)
+			return
+		}
+
+		authHeaderParts := strings.Split(authHeader, " ")
+		if len(authHeaderParts) != 2 || strings.ToLower(authHeaderParts[0]) != "basic" {
+			unauthorized(w)
+			return
+		}
+
+		payload, err := base64.StdEncoding.DecodeString(authHeaderParts[1])
+		if err != nil {
+			unauthorized(w)
+			return
+		}
+
+		pair := strings.SplitN(string(payload), ":", 2)
+		if len(pair) != 2 {
+			unauthorized(w)
+			return
+		}
+
+		user, ok := users[pair[0]]
+		if !ok || user.Password != pair[1] {
+			unauthorized(w)
+			return
+		}
+
+		// Add role to the request context if needed
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "role", user.Role)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func unauthorized(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write([]byte("Unauthorized\n"))
+}
+
 func init() {
 	createDatabaseAndTables()
 }
 
 func main() {
-	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/addUser", addUserHandler)
-	http.HandleFunc("/addActivity", addActivityHandler)
-	http.HandleFunc("/addDepartment", addDepartmentHandler)
-	http.HandleFunc("/createUser", createUserHandler)
-	http.HandleFunc("/createActivity", createActivityHandler)
-	http.HandleFunc("/createDepartment", createDepartmentHandler)
-	http.HandleFunc("/clockInOut", clockInOut)
-	http.HandleFunc("/work_hours", workHoursHandler)
-	http.HandleFunc("/current_status", currentStatusHandler)
+	users, err := loadCredentials("credentials.csv")
+	if err != nil {
+		fmt.Println("Error loading credentials:", err)
+		return
+	}
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	mux := http.NewServeMux()
+
+	mux.Handle("/", http.HandlerFunc(indexHandler))
+	mux.Handle("/addUser", http.HandlerFunc(addUserHandler))
+	mux.Handle("/addActivity", http.HandlerFunc(addActivityHandler))
+	mux.Handle("/addDepartment", http.HandlerFunc(addDepartmentHandler))
+	mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
+	mux.Handle("/createActivity", basicAuthMiddleware(users, http.HandlerFunc(createActivityHandler)))
+	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
+	mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
+	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
+	mux.Handle("/current_status", basicAuthMiddleware(users, http.HandlerFunc(currentStatusHandler)))
+
+	log.Fatal(http.ListenAndServe(":8080", mux))
 }
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {

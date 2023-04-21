@@ -41,3 +41,7 @@ This project is a simple demonstration and does not include the following:
 * Security features, such as input validation and protection against SQL injections.
 * Error handling and input validation for user interactions.
 * A user-friendly and responsive user interface.
+
+## License
+
+This project is provided under the MIT License.
