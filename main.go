@@ -17,24 +17,28 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// WorkHoursData is a struct that represents the data needed to display work hours
 type WorkHoursData struct {
 	UserName  string
 	WorkDate  string
 	WorkHours float64
 }
 
+// CurrentStatusData is a struct that represents the data needed to display the current status
 type CurrentStatusData struct {
 	UserName string
 	Status   string
 	Date     string
 }
 
+// AuthUser is a struct that represents a user in the database
 type AuthUser struct {
 	Username string
 	Password string
 	Role     string
 }
 
+// loadCredentials loads the credentials from a CSV file
 func loadCredentials(filename string) (map[string]AuthUser, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -61,6 +65,7 @@ func loadCredentials(filename string) (map[string]AuthUser, error) {
 	return users, nil
 }
 
+// basicAuthMiddleware is a middleware that checks for basic auth credentials
 func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -101,12 +106,14 @@ func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Hand
 	})
 }
 
+// unauthorized writes the unauthorized response
 func unauthorized(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 	w.WriteHeader(http.StatusUnauthorized)
 	w.Write([]byte("Unauthorized\n"))
 }
 
+// init initializes the database
 func init() {
 	createDatabaseAndTables()
 }
@@ -122,8 +129,10 @@ func main() {
 
 	mux.Handle("/", http.HandlerFunc(indexHandler))
 	mux.Handle("/addUser", http.HandlerFunc(addUserHandler))
+	mux.Handle("/editUser", http.HandlerFunc(editUserHandler))
 	mux.Handle("/addActivity", http.HandlerFunc(addActivityHandler))
 	mux.Handle("/addDepartment", http.HandlerFunc(addDepartmentHandler))
+	mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
 	mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
 	mux.Handle("/createActivity", basicAuthMiddleware(users, http.HandlerFunc(createActivityHandler)))
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
@@ -134,6 +143,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
 
+// indexHandler handles the index page
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	users := getUsers()
 	activities := getActivities()
@@ -147,6 +157,20 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "index", data)
 }
 
+// clockInOutForm handles the clock in/out form page
+func clockInOutForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		users := getUsers()
+		data := struct {
+			Users []User
+		}{
+			Users: users,
+		}
+		renderTemplate(w, "clockInOutForm", data)
+	}
+}
+
+// addUserHandler handles the add user page
 func addUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		departments := getDepartments()
@@ -159,31 +183,67 @@ func addUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// addActivityHandler handles the add activity page
 func addActivityHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		renderTemplate(w, "addActivity", nil)
 	}
 }
 
+// addDepartmentHandler handles the add department page
 func addDepartmentHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		renderTemplate(w, "addDepartment", nil)
 	}
 }
 
+// createUserHandler handles the create user page
 func createUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		name := r.FormValue("name")
+		stampkey := r.FormValue("stampkey")
 		email := r.FormValue("email")
 		position := r.FormValue("position")
 		departmentID := r.FormValue("department_id")
 
-		createUser(name, email, position, departmentID)
+		createUser(name, stampkey, email, position, departmentID)
 	}
 
 	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
 }
 
+// editUserHandler handles the edit user page
+func editUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		id := r.FormValue("id")
+
+		user := getUser(id)
+		departments := getDepartments()
+		data := struct {
+			User        User
+			Departments []Department
+		}{
+			User:        user,
+			Departments: departments,
+		}
+		renderTemplate(w, "editUser", data)
+	}
+
+	if r.Method == "POST" {
+		id := r.FormValue("id")
+		name := r.FormValue("name")
+		stampkey := r.FormValue("stampkey")
+		email := r.FormValue("email")
+		position := r.FormValue("position")
+		departmentID := r.FormValue("department_id")
+
+		updateUser(id, name, stampkey, email, position, departmentID)
+	}
+
+	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
+}
+
+// createActivityHandler handles the create activity page
 func createActivityHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		status := r.FormValue("status")
@@ -196,6 +256,7 @@ func createActivityHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/addActivity", http.StatusSeeOther)
 }
 
+// createDepartmentHandler handles the create department page
 func createDepartmentHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		name := r.FormValue("name")
@@ -206,16 +267,22 @@ func createDepartmentHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/addDepartment", http.StatusSeeOther)
 }
 
+// clockInOut handles the clock in/out page
 func clockInOut(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		r.ParseForm()
 
 		userID := r.FormValue("user_id")
+		stampKey := r.FormValue("stampkey")
 		activityID := r.FormValue("activity_id")
 
-		if userID != "" && activityID != "" {
+		if (userID != "" || stampKey != "") && activityID != "" {
 			db := getDB()
 			defer db.Close()
+
+			if userID == "" && stampKey != "" {
+				userID = getUserIDFromStampKey(stampKey)
+			}
 
 			stmt, err := db.Prepare("INSERT INTO entries (date, type_id, user_id) VALUES (?, ?, ?)")
 			if err != nil {
@@ -239,7 +306,11 @@ func clockInOut(w http.ResponseWriter, r *http.Request) {
 				log.Fatal(err)
 			}
 
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			referer := r.Header.Get("Referer")
+			if referer == "" {
+				referer = "/"
+			}
+			http.Redirect(w, r, referer, http.StatusSeeOther)
 		} else {
 			http.Error(w, "Invalid input", http.StatusBadRequest)
 		}
@@ -248,6 +319,7 @@ func clockInOut(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// workHoursHandler handles the work hours page
 func workHoursHandler(w http.ResponseWriter, r *http.Request) {
 	workHoursData := getWorkHoursData()
 
@@ -267,6 +339,7 @@ func workHoursHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// currentStatusHandler handles the current status page
 func currentStatusHandler(w http.ResponseWriter, r *http.Request) {
 	currentStatusData := getCurrentStatusData()
 
