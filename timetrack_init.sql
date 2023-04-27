@@ -22,6 +22,7 @@ IF NOT EXISTS "entries"(
 CREATE TABLE
 IF NOT EXISTS "users"(
 	"id" INTEGER PRIMARY KEY,
+	"stampkey" TEXT NOT NULL,
 	"name" TEXT NOT NULL,
 	"email" TEXT UNIQUE NOT NULL,
 	"position" TEXT,
@@ -106,3 +107,71 @@ AND entries.date = latest_entry.latest_date
 JOIN users ON users.id = entries.user_id
 JOIN type ON type.id = entries.type_id;
 
+
+CREATE VIEW
+IF NOT EXISTS "work_hours_with_type" AS WITH work_intervals AS (
+  SELECT
+    d.name AS department,
+    u.name AS user_name,
+    st.status as type,
+    st.work,
+    DATETIME(we.date) AS start_time,
+    IFNULL(
+      (
+        SELECT
+          DATETIME(next_we.date)
+        FROM
+          entries AS next_we
+        WHERE
+          next_we.user_id = we.user_id
+          AND DATETIME(next_we.date) > DATETIME(we.date)
+        ORDER BY
+          DATETIME(next_we.date) ASC
+        LIMIT 0, 1
+      ),
+      DATETIME('now')
+    ) AS end_time
+  FROM
+    entries AS we
+  JOIN
+    users AS u ON u.id = we.user_id
+  JOIN
+    departments AS d ON d.id = u.department_id
+  JOIN
+    type AS st ON st.id = we.type_id
+  ORDER BY
+    DATETIME(we.date) ASC
+)
+
+SELECT
+  department,
+  user_name,
+  type,
+  start_time,
+  ROUND(SUM((JULIANDAY(end_time) - JULIANDAY(start_time)) * 24), 2) AS work_hours
+FROM
+  work_intervals
+WHERE
+  work = 1
+GROUP BY
+  department,
+  user_name,
+  type,
+  start_time;
+
+
+CREATE VIEW
+IF NOT EXISTS "entries_view" AS
+SELECT 
+	entries.id, 
+	entries.date as Date, 
+	type.status as StatusType, 
+	type.work as isWork, 
+	type.comment as typeComment, 
+	users.name as UserName, 
+	users.email as eMail, 
+	departments.name as Department 
+FROM entries
+LEFT JOIN type ON entries.type_id = type.id
+LEFT JOIN users ON entries.user_id = users.id
+LEFT JOIN departments ON users.department_id = departments.id;
