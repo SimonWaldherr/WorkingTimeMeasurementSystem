@@ -33,6 +33,18 @@ The timekeeping system includes the following features:
 * View work hours per user per day.
 * View the current status of all employees.
 
+## Future Features
+
+* check-in and -out with RFID tags ([like in this example](https://github.com/SimonWaldherr/rp2040-examples/blob/main/read_rfid_with_rc522.py))
+* Automatic generation of reports and analyses on work hours, productivity, and attendance
+* Real-time notifications to managers when an employee works longer than planned
+* automatically tracking and managing overtime, with options for compensatory days off or additional pay
+* allow project-based time tracking, enabling employees to log hours to specific projects and tasks
+* gamification elements to increase employee engagement, such as rewards for punctual clock-ins
+* self-service portal where employees can manage their work hours, leave requests, and overtime applications themselves
+* monitor compliance with labor laws and internal company policies
+* verifies that all employees who were in the building during an emergency evacuation have reached the designated assembly point
+
 ## Limitations
 
 This project is a simple demonstration and does not include the following:
