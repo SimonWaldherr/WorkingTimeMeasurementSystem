@@ -35,7 +35,7 @@ The timekeeping system includes the following features:
 
 ## Future Features
 
-* check-in and -out with RFID tags ([like in this example](https://github.com/SimonWaldherr/rp2040-examples/blob/main/read_rfid_with_rc522.py))
+* check-in and -out with RFID tags ([like in this example](https://github.com/SimonWaldherr/rp2040-examples/blob/main/read_rfid_with_rc522.py)/[or here](https://github.com/SimonWaldherr/rp2040-examples/blob/main/read_rfid_with_rc522.go))
 * Automatic generation of reports and analyses on work hours, productivity, and attendance
 * Real-time notifications to managers when an employee works longer than planned
 * automatically tracking and managing overtime, with options for compensatory days off or additional pay
