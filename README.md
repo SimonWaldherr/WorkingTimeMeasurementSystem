@@ -1,5 +1,7 @@
 # Timekeeping System in Golang
 
+[![DOI](https://zenodo.org/badge/630874153.svg)](https://zenodo.org/doi/10.5281/zenodo.13685441)
+
 This project demonstrates how to create a simple timekeeping system using Golang and SQLite. The application allows users to clock in and out, track work hours, and view their current status. The data is organized by departments, users, and activities.
 
 Please note that this project is meant for demonstration purposes only and does not include any authentication, authorization, or security features. It is meant to showcase the ease of programming a timekeeping system in Golang.
