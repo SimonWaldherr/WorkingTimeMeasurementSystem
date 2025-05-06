@@ -1,0 +1,73 @@
+<!-- templates/scan.html -->
+{{ define "title" }}Bulk Clock via Barcode{{ end }}
+{{ define "content" }}
+<div class="card mx-auto p-4" style="max-width:600px">
+  <h2>Bulk Clock In/Out</h2>
+
+  <!-- Step 1: scan activity -->
+  <div class="mb-3">
+    <label for="activityScan" class="form-label">Scan Activity Barcode</label>
+    <input id="activityScan" class="form-control" placeholder="…or type code" autofocus>
+  </div>
+
+  <!-- Step 2: scan users -->
+  <div id="userScanSection" class="d-none">
+    <label for="userScan" class="form-label">Scan User Cards</label>
+    <input id="userScan" class="form-control mb-2" placeholder="Scan or type user code">
+    <ul id="scannedUsers" class="list-group mb-3"></ul>
+    <button id="submitScan" class="btn btn-success">Submit Batch</button>
+  </div>
+</div>
+
+<script>
+  let currentActivity = null, scanned = new Set();
+
+  // When you scan the activity barcode:
+  document.getElementById('activityScan')
+    .addEventListener('keypress', e => {
+      if (e.key === 'Enter') {
+        currentActivity = e.target.value.trim();
+        if (!currentActivity) return;
+        // Reveal the user scan section
+        document.getElementById('userScanSection').classList.remove('d-none');
+        document.getElementById('userScan').focus();
+      }
+    });
+
+  // When you scan each user:
+  document.getElementById('userScan')
+    .addEventListener('keypress', e => {
+      if (e.key === 'Enter') {
+        let code = e.target.value.trim();
+        e.target.value = '';
+        if (!code || scanned.has(code)) return;
+        scanned.add(code);
+        let li = document.createElement('li');
+        li.textContent = code;
+        li.className = 'list-group-item';
+        document.getElementById('scannedUsers').append(li);
+      }
+    });
+
+  // On submit, POST batch to server
+  document.getElementById('submitScan')
+    .addEventListener('click', () => {
+      if (!currentActivity || !scanned.size) return alert('Scan activity and at least one user');
+      fetch('/bulkClock', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          activityCode: currentActivity,
+          userCodes: Array.from(scanned)
+        })
+      }).then(r => {
+        if (r.ok) {
+          alert('Batch recorded!');
+          window.location.reload();
+        } else {
+          r.text().then(t => alert('Error: '+t));
+        }
+      });
+    });
+</script>
+{{ end }}

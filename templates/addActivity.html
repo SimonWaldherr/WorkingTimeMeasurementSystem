@@ -1,27 +1,31 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <title>Add Activity</title>
-</head>
-<body>
-    <h1>Add Activity</h1>
-    <form action="/createActivity" method="POST">
-        <label for="status">Status:</label>
-        <input type="text" id="status" name="status"><br>
-        <label for="work">Work (1 for work, 0 for non-work):</label>
-        <input type="number" id="work" name="work" min="0" max="1"><br>
-        <label for="comment">Comment:</label>
-        <input type="text" id="comment" name="comment"><br>
-        <input type="submit" value="Submit">
-    </form>
-    <a href="/">Back to Index</a>
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
-</body>
-</html>
+{{ define "title" }}Add Activity{{ end }}
+
+{{ define "content" }}
+<div class="card p-4 mx-auto" style="max-width: 500px;">
+  <h2 class="mb-4">Add Activity</h2>
+  <form action="/createActivity" method="POST">
+    <div class="mb-3">
+      <label for="status" class="form-label">Activity Name</label>
+      <input type="text" id="status" name="status"
+             class="form-control"
+             placeholder="e.g. Meeting"
+             required>
+    </div>
+    <div class="mb-3">
+      <label for="work" class="form-label">Is this work?</label>
+      <select id="work" name="work" class="form-select">
+        <option value="1">Yes</option>
+        <option value="0">No</option>
+      </select>
+    </div>
+    <div class="mb-3">
+      <label for="comment" class="form-label">Comment (optional)</label>
+      <input type="text" id="comment" name="comment"
+             class="form-control"
+             placeholder="Additional details...">
+    </div>
+    <button type="submit" class="btn btn-primary">Add Activity</button>
+    <a href="/" class="btn btn-secondary ms-2">Cancel</a>
+  </form>
+</div>
+{{ end }}
