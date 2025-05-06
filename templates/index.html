@@ -1,47 +1,33 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <title>Time Tracking System</title>
-</head>
-<body>
-    <h1>Time Tracking System</h1>
-    <ul>
-        <li><a href="/addUser">add User</a></li>
-        <li><a href="/addActivity">add Activity</a></li>
-        <li><a href="/addDepartment">add Department</a></li>
-        <li></li>
-        <li><a href="/clockInOutForm">clock in/out</a></li>
-        <li></li>
-        <li><a href="/work_hours">work hours overview</a></li>
-        <li><a href="/current_status">current employee status</a></li>
-    </ul>
+{{ define "title" }}Time Tracking System{{ end }}
 
-    <h2>Clock In/Out</h2>
-    
-    <form action="/clockInOut" method="post">
-        <label for="user_id">User:</label>
-        <select name="user_id" id="user_id">
-            {{range .Users}}
-            <option value="{{.ID}}">{{.Name}}</option>
-            {{end}}
-        </select>
-        
-        <label for="activity_id">Activity:</label>
-        <select name="activity_id" id="activity_id">
-            {{range .Activities}}
-            <option value="{{.ID}}">{{.Status}}</option>
-            {{end}}
-        </select>
-        
-        <input type="submit" value="Clock In/Out">
-    </form>
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
-</body>
-</html>
+{{ define "content" }}
+<div class="p-5 mb-4 bg-white rounded shadow-sm text-center">
+  <h1 class="display-5">Time Tracking System</h1>
+  <p class="lead">Manage users, activities and track work hours in one place.</p>
+  <a href="/addUser" class="btn btn-primary btn-lg me-2">Add User</a>
+  <a href="/addActivity" class="btn btn-primary btn-lg me-2">Add Activity</a>
+  <a href="/addDepartment" class="btn btn-primary btn-lg me-2">Add Dept</a>
+  <a href="/clockInOutForm" class="btn btn-success btn-lg">Clock In/Out</a>
+</div>
+
+<div class="row gx-4">
+  <div class="col-md-6 mb-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Work Hours Overview</h5>
+        <p class="card-text">See total hours logged by each employee.</p>
+        <a href="/work_hours" class="btn btn-outline-primary">View</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 mb-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Current Status</h5>
+        <p class="card-text">Who is clocked in or out right now?</p>
+        <a href="/current_status" class="btn btn-outline-primary">View</a>
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}
