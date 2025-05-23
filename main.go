@@ -1,19 +1,21 @@
 package main
 
 import (
-	"context"
-	"encoding/base64"
+	//"context"
+	//"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"html/template"
+	//"database/sql"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
+	//"strings"
 	"time"
 
+	"github.com/gorilla/sessions"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -71,42 +73,30 @@ func loadCredentials(filename string) (map[string]AuthUser, error) {
 	return users, nil
 }
 
-// basicAuthMiddleware is a middleware that checks for basic auth credentials
+var store = sessions.NewCookieStore([]byte("change-me-very-secret"))
+
+// Session duration in minutes
+const sessionDuration = 30
+
 func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			unauthorized(w)
+		session, _ := store.Get(r, "session")
+		username, ok := session.Values["username"].(string)
+		if !ok || username == "" {
+			// not logged in: redirect to login page
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "basic" {
-			unauthorized(w)
+		_, exists := users[username]
+		if !exists {
+			// user not found in CSV: force logout
+			session.Options.MaxAge = -1
+			session.Save(r, w)
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-
-		payload, err := base64.StdEncoding.DecodeString(parts[1])
-		if err != nil {
-			unauthorized(w)
-			return
-		}
-
-		pair := strings.SplitN(string(payload), ":", 2)
-		if len(pair) != 2 {
-			unauthorized(w)
-			return
-		}
-
-		user, ok := users[pair[0]]
-		if !ok || user.Password != pair[1] {
-			unauthorized(w)
-			return
-		}
-
-		// add role to context if needed
-		ctx := context.WithValue(r.Context(), "role", user.Role)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		// Optionally: Session-Timeout erzwingen (optional, Cookie-Timeout reicht meist)
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -121,7 +111,7 @@ func init() {
 }
 
 func main() {
-	// load basic-auth users
+	// load auth users
 	users, err := loadCredentials("credentials.csv")
 	if err != nil {
 		log.Fatalf("Error loading credentials: %v", err)
@@ -129,11 +119,15 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// Login & Logout
+	mux.Handle("/login", loginHandler(users))
+	mux.HandleFunc("/logout", logoutHandler)
+
 	// core pages (unprotected)
 	mux.Handle("/", http.HandlerFunc(indexHandler))
-	mux.Handle("/addUser", http.HandlerFunc(addUserHandler))
-	mux.Handle("/addActivity", http.HandlerFunc(addActivityHandler))
-	mux.Handle("/addDepartment", http.HandlerFunc(addDepartmentHandler))
+	mux.Handle("/addUser", basicAuthMiddleware(users, http.HandlerFunc(addUserHandler)))
+	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
+	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
 	mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
 
 	// protected actions
@@ -143,6 +137,7 @@ func main() {
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
 	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
 	mux.Handle("/current_status", basicAuthMiddleware(users, http.HandlerFunc(currentStatusHandler)))
+	mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
 
 	// clock in/out via dropdown
 	mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
@@ -167,6 +162,115 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		Activities: activities,
 	}
 	renderTemplate(w, "index", data)
+}
+
+func loginHandler(users map[string]AuthUser) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			renderTemplate(w, "login", nil)
+			return
+		}
+		// POST
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		user, ok := users[username]
+		if !ok || user.Password != password {
+			renderTemplate(w, "login", map[string]interface{}{
+				"Error": "Benutzername oder Passwort falsch.",
+			})
+			return
+		}
+		session, _ := store.Get(r, "session")
+		session.Values["username"] = user.Username
+		session.Options = &sessions.Options{
+			Path:     "/",
+			MaxAge:   sessionDuration * 60, // in Sekunden
+			HttpOnly: true,
+		}
+		session.Save(r, w)
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
+}
+
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "session")
+	session.Options.MaxAge = -1 // Löscht das Cookie
+	session.Save(r, w)
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// Entry-Struktur anpassen je nach deiner DB
+type Entry struct {
+	ID         int
+	UserID     int
+	UserName   string
+	ActivityID string
+	Date       string
+	Start      string
+	End        string
+}
+
+// Zeitformat: DD.MM.YYYY HH:MM[:SS]
+const timeLayout = "02.01.2006 15:04:05" // oder ohne Sekunden "02.01.2006 15:04"
+
+func entriesViewHandler(w http.ResponseWriter, r *http.Request) {
+	// Zeitformat wie gewohnt
+	const timeLayout = "02.01.2006 15:04:05"
+
+	if r.Method == "POST" {
+		r.ParseForm()
+		user := r.Form.Get("user")
+		activity := r.Form.Get("activity")
+		start := r.Form.Get("start")
+		end := r.Form.Get("end")
+		id := r.Form.Get("id") // für Edit
+
+		// Zeit parsen
+		startTime, err := time.Parse(timeLayout, start)
+		if err != nil {
+			http.Error(w, "Startzeit ungültig", 400)
+			return
+		}
+		endTime, err := time.Parse(timeLayout, end)
+		if err != nil {
+			http.Error(w, "Endzeit ungültig", 400)
+			return
+		}
+
+		db := getDB()
+		defer db.Close()
+		var dbErr error
+		if id == "" {
+			// INSERT
+			_, dbErr = db.Exec("INSERT INTO entries (user, activity, start, end) VALUES (?, ?, ?, ?)", user, activity, startTime, endTime)
+		} else {
+			// UPDATE
+			_, dbErr = db.Exec("UPDATE entries SET user=?, activity=?, start=?, end=? WHERE id=?", user, activity, startTime, endTime, id)
+		}
+		if dbErr != nil {
+			http.Error(w, "DB Fehler", 500)
+			return
+		}
+		http.Redirect(w, r, "/entries_view", http.StatusSeeOther)
+		return
+	}
+
+	// GET: Seite anzeigen
+	entries := getEntries()
+	users := getUsers()
+	activities := getActivities()
+
+	tmpl, err := template.ParseFiles("templates/entries_view.html")
+	if err != nil {
+		http.Error(w, "Template-Fehler", 500)
+		return
+	}
+	tmpl.Execute(w, map[string]interface{}{
+		"Entries":    entries,
+		"Users":      users,
+		"Activities": activities,
+		"TimeLayout": timeLayout[:16], // Für das Input-Feld (ohne Sekunden)
+	})
 }
 
 // clockInOutForm shows the manual clock in/out form
