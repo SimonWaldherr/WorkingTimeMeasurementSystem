@@ -3,29 +3,136 @@
 {{ define "content" }}
 <div class="card p-4 mx-auto" style="max-width: 500px;">
   <h2 class="mb-4">Clock In / Clock Out</h2>
-  <form action="/clockInOut" method="post">
+  <form id="clockForm" action="/clockInOut" method="post" autocomplete="off">
+    <div class="mb-3">
+      <label for="scaninput" class="form-label">Barcode Scan</label>
+      <input type="text" id="scaninput" name="scaninput"
+             class="form-control"
+             placeholder="Scan USR- oder ACT-Code"
+             autocomplete="off">
+    </div>
     <div class="mb-3">
       <label for="stampkey" class="form-label">Stamp Key</label>
       <input type="text" id="stampkey" name="stampkey"
              class="form-control"
-             placeholder="Enter your stamp key"
-             autofocus required>
+             placeholder="Wird automatisch gesetzt"
+             readonly>
     </div>
     <div class="mb-3">
       <label for="activity_id" class="form-label">Select Activity</label>
-      <select id="activity_id" name="activity_id"
-              class="form-select">
+      <select id="activity_id" name="activity_id" class="form-select">
+        <option value="">Bitte wählen...</option>
         {{range .Activities}}
           <option value="{{.ID}}">{{.Status}}</option>
         {{end}}
       </select>
     </div>
-    <button type="submit" class="btn btn-success">Submit</button>
+    <button type="submit" class="btn btn-success" id="submitBtn" disabled>Submit</button>
     <a href="/" class="btn btn-secondary ms-2">Home</a>
+    <div id="formMessage" style="margin-top:1em"></div>
   </form>
 </div>
 
 <script>
-  document.getElementById("stampkey").focus();
+document.getElementById("scaninput").focus();
+
+let buffer = "";
+
+function resetScanField() {
+  setTimeout(() => {
+    document.getElementById("scaninput").value = "";
+    buffer = "";
+    document.getElementById("scaninput").focus();
+  }, 50);
+}
+
+function checkFormValid() {
+  const user = document.getElementById("stampkey").value.trim();
+  const activity = document.getElementById("activity_id").value;
+  document.getElementById("submitBtn").disabled = !(user && activity);
+  sendData();
+}
+
+document.getElementById("scaninput").addEventListener("input", function(e) {
+  buffer = e.target.value;
+
+  if (buffer.toUpperCase().endsWith("-END")) {
+    if (buffer.toUpperCase().startsWith("USR-")) {
+      const userid = buffer.substring(4, buffer.length - 4);
+      document.getElementById("stampkey").value = userid;
+      checkFormValid();
+      
+    } else if (buffer.toUpperCase().startsWith("ACT-")) {
+      const actid = buffer.substring(4, buffer.length - 4);
+      const select = document.getElementById("activity_id");
+      for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value == actid) {
+          select.selectedIndex = i;
+          break;
+        }
+      }
+      checkFormValid();
+    }
+    resetScanField();
+  }
+});
+
+document.getElementById("scaninput").addEventListener("keydown", function(e) {
+  if (
+    e.key === "Tab" ||
+    e.key === "Enter" ||
+    e.key === "LineFeed" ||
+    e.key === "ArrowDown" ||
+    e.key === "ArrowUp"
+  ) {
+    e.preventDefault();
+    resetScanField();
+  }
+});
+
+document.getElementById("activity_id").addEventListener("change", checkFormValid);
+
+function showFormMessage(msg, success) {
+  const el = document.getElementById("formMessage");
+  el.textContent = msg;
+  el.style.color = success ? "green" : "red";
+  if(success) setTimeout(()=>{el.textContent="";}, 2000);
+}
+  
+function sendData() {
+  const user = document.getElementById("stampkey").value.trim();
+  const activity = document.getElementById("activity_id").value;
+  
+  if(!user || !activity) {
+    showFormMessage("Bitte sowohl User als auch Aktivität wählen!", false);
+    return;
+  }
+  
+  // AJAX Submit
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/clockInOut", true);
+  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+  xhr.onreadystatechange = function() {
+    if(xhr.readyState === 4) {
+      if(xhr.status === 200) {
+        // Erfolg: User resetten, Activity bleibt, Button deaktivieren
+        document.getElementById("stampkey").value = "";
+        checkFormValid();
+        showFormMessage("Erfolgreich gestempelt!", true);
+      } else {
+        showFormMessage("Fehler beim Übertragen!", false);
+      }
+    }
+  };
+  xhr.send("stampkey=" + encodeURIComponent(user) + "&activity_id=" + encodeURIComponent(activity));
+}
+
+document.getElementById("clockForm").addEventListener("submit", function(e) {
+  e.preventDefault();
+  sendData();
+});
+
+// Initial valid check
+checkFormValid();
 </script>
 {{ end }}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Entries View</title>
+</head>
+<body>
+<h1>Einträge</h1>
+<table border="1">
+    <tr>
+        <th>ID</th><th>User</th><th>Aktivität</th><th>Start</th><th>Ende</th><th>Aktion</th>
+    </tr>
+    {{range .Entries}}
+    <tr>
+        <td>{{.ID}}</td>
+        <td>{{.UserName}}</td>
+        <td>{{.Activity}}</td>
+        <td>{{.Start}}</td>
+        <td>{{.End}}</td>
+        <td>
+            <form action="/entries_view" method="post" style="display:inline;">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <input type="hidden" name="user" value="{{.UserID}}">
+                <input type="hidden" name="activity" value="{{.Activity}}">
+                <input type="hidden" name="start" value="{{.Start}}">
+                <input type="hidden" name="end" value="{{.End}}">
+                <input type="submit" value="Bearbeiten">
+            </form>
+        </td>
+    </tr>
+    {{end}}
+</table>
+
+<h2>Neuer/Ändern Eintrag</h2>
+<form action="/entries_view" method="post">
+    <input type="hidden" name="id" value="">
+    User:
+    <select name="user">
+        {{range .Users}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
+    Aktivität:
+    <select name="activity">
+        {{range .Activities}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
+    Start:
+    <input type="text" name="start" placeholder="DD.MM.YYYY HH:MM[:SS]">
+    Ende:
+    <input type="text" name="end" placeholder="DD.MM.YYYY HH:MM[:SS]">
+    <input type="submit" value="Speichern">
+</form>
+</body>
+</html>

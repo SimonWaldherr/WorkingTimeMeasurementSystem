@@ -1,0 +1,21 @@
+{{ define "title" }}Login{{ end }}
+
+{{ define "content" }}
+<div class="card p-4 mx-auto" style="max-width:400px;">
+  <h2 class="mb-4">Login</h2>
+  {{if .Error}}
+    <div class="alert alert-danger">{{.Error}}</div>
+  {{end}}
+  <form method="post" action="/login">
+    <div class="mb-3">
+      <label for="username" class="form-label">Benutzername</label>
+      <input type="text" class="form-control" id="username" name="username" autofocus required>
+    </div>
+    <div class="mb-3">
+      <label for="password" class="form-label">Passwort</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <button type="submit" class="btn btn-success">Login</button>
+  </form>
+</div>
+{{ end }}

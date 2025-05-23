@@ -119,6 +119,34 @@ func getActivities() []Activity {
 	return activities
 }
 
+func getEntries() []Entry {
+	db := getDB()
+	defer db.Close()
+
+	rows, err := db.Query(`SELECT id, user_id, type_id, date FROM entries`)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	var entries []Entry
+	for rows.Next() {
+		var entry Entry
+		err := rows.Scan(&entry.ID, &entry.UserID, &entry.ActivityID, &entry.Date)
+		if err != nil {
+			log.Fatal(err)
+		}
+		entries = append(entries, entry)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return entries
+}
+
 // getDepartments returns a slice of all departments in the database
 func getDepartments() []Department {
 	db := getDB()
