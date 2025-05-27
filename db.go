@@ -366,7 +366,11 @@ func createUniqueStampKey() int {
 	// Generiere einen eindeutigen Stampkey (hier einfach eine Zufallszahl)
 	// In der Praxis sollte dies robuster sein, z.B. durch UUIDs oder andere Mechanismen
 	for {
-		stampKey := time.Now().UnixNano() + int64(os.Getpid())
+		//stampKey := time.Now().UnixNano() + int64(os.Getpid())
+		// stampkey sollte eindeutig sein und zwischen 100000 und 999999999999 liegen
+		stampKey := time.Now().UnixNano()%900000000000 + 100000000000 // 12-stellig
+
+		// Überprüfen, ob der Stampkey bereits existiert
 		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE stampkey=@sk", tbl("users"))
 		var count int
 		if err := db.QueryRow(query, sql.Named("sk", stampKey)).Scan(&count); err != nil {
