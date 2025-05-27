@@ -129,6 +129,7 @@ func main() {
 	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
 	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
 	mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
+	mux.Handle("/current_status", http.HandlerFunc(currentStatusHandler))
 
 	// protected actions
 	mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
@@ -136,7 +137,7 @@ func main() {
 	mux.Handle("/createActivity", basicAuthMiddleware(users, http.HandlerFunc(createActivityHandler)))
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
 	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
-	mux.Handle("/current_status", basicAuthMiddleware(users, http.HandlerFunc(currentStatusHandler)))
+	mux.Handle("/work_status", basicAuthMiddleware(users, http.HandlerFunc(workStatusHandler)))
 	//mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
 
 	// barcodes page
@@ -414,6 +415,42 @@ func clockInOut(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect back to the referring page
 	http.Redirect(w, r, r.Header.Get("Referer"), http.StatusSeeOther)
+}
+
+type PageData struct {
+	WorkHoursTable     TableData
+	CurrentStatusTable TableData
+}
+
+func workStatusHandler(w http.ResponseWriter, r *http.Request) {
+	workData := getWorkHoursData()
+	statusData := getCurrentStatusData()
+
+	workRows := make([][]interface{}, len(workData))
+	for i, d := range workData {
+		workRows[i] = []interface{}{d.UserName, d.WorkDate, d.WorkHours}
+	}
+
+	statusRows := make([][]interface{}, len(statusData))
+	for i, d := range statusData {
+		statusRows[i] = []interface{}{d.UserName, d.Status, d.Date}
+	}
+
+	pageData := PageData{
+		WorkHoursTable: TableData{
+			Headers: []string{"User Name", "Work Date", "Work Hours"},
+			Rows:    workRows,
+		},
+		CurrentStatusTable: TableData{
+			Headers: []string{"User Name", "Status", "Date"},
+			Rows:    statusRows,
+		},
+	}
+
+	tmpl := template.Must(template.New("page").ParseFiles("templates/layout.html")) // Oder dein Template-Setup
+	if err := tmpl.ExecuteTemplate(w, "page", pageData); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // workHoursHandler shows the work hours table
