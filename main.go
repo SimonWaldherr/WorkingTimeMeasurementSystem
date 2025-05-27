@@ -8,7 +8,7 @@ import (
 	"html/template"
 
 	//"database/sql"
-	"io"
+
 	"log"
 	"net/http"
 	"os"
@@ -201,6 +201,7 @@ func loginHandler(users map[string]AuthUser) http.HandlerFunc {
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	// Löscht die Session und leitet zur Login-Seite weiter
 	session, _ := store.Get(r, "session")
 	session.Options.MaxAge = -1 // Löscht das Cookie
 	session.Save(r, w)
@@ -220,68 +221,6 @@ type Entry struct {
 
 // Zeitformat: DD.MM.YYYY HH:MM[:SS]
 const timeLayout = "02.01.2006 15:04:05" // oder ohne Sekunden "02.01.2006 15:04"
-
-/*
-func entriesViewHandler(w http.ResponseWriter, r *http.Request) {
-	// Zeitformat wie gewohnt
-	const timeLayout = "02.01.2006 15:04:05"
-
-	if r.Method == "POST" {
-		r.ParseForm()
-		user := r.Form.Get("user")
-		activity := r.Form.Get("activity")
-		start := r.Form.Get("start")
-		end := r.Form.Get("end")
-		id := r.Form.Get("id") // für Edit
-
-		// Zeit parsen
-		startTime, err := time.Parse(timeLayout, start)
-		if err != nil {
-			http.Error(w, "Startzeit ungültig", 400)
-			return
-		}
-		endTime, err := time.Parse(timeLayout, end)
-		if err != nil {
-			http.Error(w, "Endzeit ungültig", 400)
-			return
-		}
-
-		db := getDB()
-		defer db.Close()
-		var dbErr error
-		if id == "" {
-			// INSERT
-			_, dbErr = db.Exec("INSERT INTO entries (user, activity, start, end) VALUES (?, ?, ?, ?)", user, activity, startTime, endTime)
-		} else {
-			// UPDATE
-			_, dbErr = db.Exec("UPDATE entries SET user=?, activity=?, start=?, end=? WHERE id=?", user, activity, startTime, endTime, id)
-		}
-		if dbErr != nil {
-			http.Error(w, "DB Fehler", 500)
-			return
-		}
-		http.Redirect(w, r, "/entries_view", http.StatusSeeOther)
-		return
-	}
-
-	// GET: Seite anzeigen
-	entries := getEntries()
-	users := getUsers()
-	activities := getActivities()
-
-	tmpl, err := template.ParseFiles("templates/entries_view.html")
-	if err != nil {
-		http.Error(w, "Template-Fehler", 500)
-		return
-	}
-	tmpl.Execute(w, map[string]interface{}{
-		"Entries":    entries,
-		"Users":      users,
-		"Activities": activities,
-		"TimeLayout": timeLayout[:16], // Für das Input-Feld (ohne Sekunden)
-	})
-}
-*/
 
 // clockInOutForm shows the manual clock in/out form
 func clockInOutForm(w http.ResponseWriter, r *http.Request) {
@@ -461,7 +400,7 @@ func workHoursHandler(w http.ResponseWriter, r *http.Request) {
 	for i, d := range data {
 		rows[i] = []interface{}{d.UserName, d.WorkDate, d.WorkHours}
 	}
-	renderHTMLTable(w, TableData{Headers: headers, Rows: rows})
+	renderHTMLTable(w, "Work Hours", TableData{Headers: headers, Rows: rows})
 }
 
 // currentStatusHandler shows who is currently clocked in/out
@@ -472,7 +411,7 @@ func currentStatusHandler(w http.ResponseWriter, r *http.Request) {
 	for i, d := range data {
 		rows[i] = []interface{}{d.UserName, d.Status, d.Date}
 	}
-	renderHTMLTable(w, TableData{Headers: headers, Rows: rows})
+	renderHTMLTable(w, "Current Status", TableData{Headers: headers, Rows: rows})
 }
 
 // scanHandler serves the barcode-scanning page
@@ -521,29 +460,4 @@ func bulkClockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// TableData is used to render a generic HTML table
-type TableData struct {
-	Headers []string
-	Rows    [][]interface{}
-}
-
-// renderHTMLTable renders a simple HTML table
-func renderHTMLTable(w io.Writer, td TableData) {
-	const tmpl = `
-<table class="table table-striped">
-  <thead>
-    <tr>{{- range .Headers }}<th>{{ . }}</th>{{- end }}</tr>
-  </thead>
-  <tbody>
-    {{- range .Rows }}
-      <tr>{{- range . }}<td>{{ . }}</td>{{- end }}</tr>
-    {{- end }}
-  </tbody>
-</table>`
-	t := template.Must(template.New("table").Parse(tmpl))
-	if err := t.Execute(w, td); err != nil {
-		log.Printf("Error rendering table: %v", err)
-	}
 }
