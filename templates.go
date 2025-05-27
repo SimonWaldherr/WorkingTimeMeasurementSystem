@@ -69,6 +69,40 @@ func renderTemplate(w http.ResponseWriter, page string, data interface{}) {
 		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
 	}
 }
+
+// TableData is used to render a generic HTML table
+type TableData struct {
+	Title   string
+	Headers []string
+	Rows    [][]interface{}
+}
+
+// renderHTMLTable renders a simple HTML table
+func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
+	// Clone base to avoid polluting it
+	tmpl, err := base.Clone()
+	if err != nil {
+		http.Error(w, "template clone error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pageFile := path.Join("templates", "table.html")
+	// Check if base was loaded from disk or embed by checking the type of base (optional)
+	if info, err := os.Stat("templates"); err == nil && info.IsDir() {
+		// Parse page template from disk
+
+		tmpl, err = tmpl.ParseFiles(pageFile)
+	} else {
+		// Parse page template from embedded FS
+		tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
+	}
+
+	if err != nil {
+		http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 func renderError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
 	data := map[string]interface{}{
