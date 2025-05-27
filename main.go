@@ -6,17 +6,17 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"html/template"
+
 	//"database/sql"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+
 	//"strings"
 	"time"
 
 	"github.com/gorilla/sessions"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // WorkHoursData is a struct that represents the data needed to display work hours
@@ -137,7 +137,14 @@ func main() {
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
 	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
 	mux.Handle("/current_status", basicAuthMiddleware(users, http.HandlerFunc(currentStatusHandler)))
-	mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
+	//mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
+
+	// barcodes page
+	mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
+
+	// static files (CSS, JS, images)
+	fs := http.FileServer(http.Dir("static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	// clock in/out via dropdown
 	mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
@@ -146,8 +153,8 @@ func main() {
 	mux.Handle("/scan", http.HandlerFunc(scanHandler))
 	mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
 
-	log.Printf("Starting server on :8080…")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Printf("Starting server on :8083…")
+	log.Fatal(http.ListenAndServe(":8083", mux))
 }
 
 // indexHandler shows the home page
@@ -213,6 +220,7 @@ type Entry struct {
 // Zeitformat: DD.MM.YYYY HH:MM[:SS]
 const timeLayout = "02.01.2006 15:04:05" // oder ohne Sekunden "02.01.2006 15:04"
 
+/*
 func entriesViewHandler(w http.ResponseWriter, r *http.Request) {
 	// Zeitformat wie gewohnt
 	const timeLayout = "02.01.2006 15:04:05"
@@ -272,6 +280,7 @@ func entriesViewHandler(w http.ResponseWriter, r *http.Request) {
 		"TimeLayout": timeLayout[:16], // Für das Input-Feld (ohne Sekunden)
 	})
 }
+*/
 
 // clockInOutForm shows the manual clock in/out form
 func clockInOutForm(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +358,17 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
 }
 
+func barcodesHandler(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Users      []User
+		Activities []Activity
+	}{
+		Users:      getUsers(),
+		Activities: getActivities(),
+	}
+	renderTemplate(w, "barcodes", data)
+}
+
 // createActivityHandler processes adding a new activity
 func createActivityHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
@@ -389,21 +409,10 @@ func clockInOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
-	db := getDB()
-	defer db.Close()
-	stmt, err := db.Prepare("INSERT INTO entries (date, type_id, user_id) VALUES (?, ?, ?)")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmt.Close()
 
-	now := time.Now().Format(time.RFC3339)
-	uid, _ := strconv.Atoi(userID)
-	aid, _ := strconv.Atoi(activityID)
-	if _, err := stmt.Exec(now, aid, uid); err != nil {
-		log.Fatal(err)
-	}
+	createEntry(userID, activityID, time.Now())
 
+	// Redirect back to the referring page
 	http.Redirect(w, r, r.Header.Get("Referer"), http.StatusSeeOther)
 }
 
