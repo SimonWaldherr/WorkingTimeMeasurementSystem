@@ -90,7 +90,6 @@ func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
 	// Check if base was loaded from disk or embed by checking the type of base (optional)
 	if info, err := os.Stat("templates"); err == nil && info.IsDir() {
 		// Parse page template from disk
-
 		tmpl, err = tmpl.ParseFiles(pageFile)
 	} else {
 		// Parse page template from embedded FS
@@ -100,6 +99,11 @@ func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
 	if err != nil {
 		http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	td.Title = title
+	if err := tmpl.ExecuteTemplate(w, "base", td); err != nil {
+		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
 	}
 }
 
