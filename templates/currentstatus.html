@@ -1,0 +1,18 @@
+{{ define "title" }}Aktueller Status{{ end }}
+
+{{ define "content" }}
+<div class="card p-4 mx-auto" style="max-width: 900px;">
+  <h2 class="mb-4">Aktueller Status</h2>
+  <table class="table table-striped table-hover table-responsive">
+    <thead>
+      <tr>{{- range .Headers }}<th scope="col">{{ . }}</th>{{- end }}</tr>
+    </thead>
+    <tbody>
+      {{- range .Rows }}
+      <tr>{{- range . }}<td>{{ . }}</td>{{- end }}</tr>
+      {{- end }}
+    </tbody>
+  </table>
+  <a href="/" class="btn btn-secondary mt-3">Zurück</a>
+</div>
+{{ end }}
