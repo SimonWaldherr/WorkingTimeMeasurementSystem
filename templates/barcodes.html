@@ -1,0 +1,141 @@
+{{ define "title" }}Barcodes drucken{{ end }}
+
+{{ define "content" }}
+<h2 class="mb-4">Barcodes für Benutzer&nbsp;und&nbsp;Aktivitäten</h2>
+
+<!-- Tabs ------------------------------------------------------------>
+<ul class="nav nav-tabs" id="barcodeTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="users-tab" data-bs-toggle="tab"
+            data-bs-target="#users" type="button" role="tab">Users</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="acts-tab" data-bs-toggle="tab"
+            data-bs-target="#activities" type="button" role="tab">Activities</button>
+  </li>
+</ul>
+
+<div class="tab-content pt-4">
+
+  <!-- Filter & Druck-Button oberhalb der Tabs -->
+  <div class="d-flex gap-3 mb-3">
+    <div>
+      <label for="user-filter" class="form-label">Arbeitsplätze auswählen:</label>
+      <select id="user-filter" multiple class="form-select" size="5">
+        {{ range .Users }}
+          <option value="{{ .ID }}">{{ .Name }}</option>
+        {{ end }}
+      </select>
+    </div>
+    <div>
+      <label for="activity-filter" class="form-label">Aktivitäten auswählen:</label>
+      <select id="activity-filter" multiple class="form-select" size="5">
+        {{ range .Activities }}
+          <option value="{{ .ID }}">{{ .Status }}</option>
+        {{ end }}
+      </select>
+    </div>
+    <div class="align-self-end">
+      <button id="printSelected" class="btn btn-primary">Ausgewählte Karten drucken</button>
+    </div>
+  </div>
+
+  <!-- Users --------------------------------------------------------->
+  <div class="tab-pane fade show active" id="users" role="tabpanel">
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+      {{ range .Users }}
+      <div class="col user-card" data-user-id="{{ .ID }}">
+        <div class="card p-3 text-center shadow-sm">
+          <strong class="mb-2">{{ .Name }}</strong>
+          <svg class="barcode w-100" id="bc-user-{{ .ID }}"
+               data-code="USR-{{ .Stampkey }}-END"></svg>
+        </div>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+
+  <!-- Activities ---------------------------------------------------->
+  <div class="tab-pane fade" id="activities" role="tabpanel">
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+      {{ range .Activities }}
+      <div class="col activity-card" data-activity-id="{{ .ID }}">
+        <div class="card p-3 text-center shadow-sm">
+          <strong class="mb-2">{{ .Status }}</strong>
+          <svg class="barcode w-100" id="bc-act-{{ .ID }}"
+               data-code="ACT-{{ .ID }}-END"></svg>
+          {{ if .Comment }}<small class="text-muted">{{ .Comment }}</small>{{ end }}
+        </div>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+
+</div>
+
+<!-- JsBarcode CDN --------------------------------------------------->
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
+<script>
+  // Barcodes rendern
+  document.querySelectorAll("svg.barcode").forEach(svg => {
+    JsBarcode(svg, svg.dataset.code, {
+      format: "CODE128",
+      width: 2,
+      height: 120,
+      displayValue: false
+    });
+  });
+
+  // Print Styles
+  const style = document.createElement("style");
+  style.textContent = `@media print {
+    svg.barcode { height:30mm !important; width:100% !important; }
+    //.card { border:none !important; box-shadow:none !important; }
+    #user-filter, #activity-filter, #printSelected, .nav, h2, .mb-3, .nav-tabs { display: none !important; }
+  }`;
+  document.head.append(style);
+
+  const userFilter = document.getElementById("user-filter");
+  const activityFilter = document.getElementById("activity-filter");
+  const printBtn = document.getElementById("printSelected");
+
+  const userCards = document.querySelectorAll(".user-card");
+  const activityCards = document.querySelectorAll(".activity-card");
+
+  function filterCards() {
+    const selectedUsers = Array.from(userFilter.selectedOptions).map(opt => opt.value);
+    const selectedActivities = Array.from(activityFilter.selectedOptions).map(opt => opt.value);
+
+	  // User-Karten anzeigen
+	  let anyUserVisible = false;
+	  userCards.forEach(card => {
+		const uid = card.dataset.userId;
+		const shouldShow = selectedUsers.length === 0 || selectedUsers.includes(uid);
+		card.style.display = shouldShow ? "" : "none";
+		if (shouldShow) anyUserVisible = true;
+	  });
+
+	  // Activity-Karten anzeigen
+	  let anyActivityVisible = false;
+	  activityCards.forEach(card => {
+		const aid = card.dataset.activityId;
+		const shouldShow = selectedActivities.length === 0 || selectedActivities.includes(aid);
+		card.style.display = shouldShow ? "" : "none";
+		if (shouldShow) anyActivityVisible = true;
+	  });
+	  
+	  // Filter je nach Sichtbarkeit aus-/einblenden
+	  userFilter.style.display = anyUserVisible ? "" : "none";
+	  activityFilter.style.display = anyActivityVisible ? "" : "none";
+  }
+
+  userFilter.addEventListener("change", filterCards);
+  activityFilter.addEventListener("change", filterCards);
+
+  printBtn.addEventListener("click", () => window.print());
+
+  // Initial alle anzeigen
+  filterCards();
+</script>
+{{ end }}
