@@ -101,6 +101,14 @@ func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
 		http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	err = tmpl.ExecuteTemplate(w, "base", struct {
+		Title string
+		Table TableData
+	}{title, td})
+	if err != nil {
+		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func renderError(w http.ResponseWriter, status int, message string) {
