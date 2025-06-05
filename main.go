@@ -6,17 +6,17 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"html/template"
+
 	//"database/sql"
-	"io"
+
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+
 	//"strings"
 	"time"
 
 	"github.com/gorilla/sessions"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // WorkHoursData is a struct that represents the data needed to display work hours
@@ -129,6 +129,7 @@ func main() {
 	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
 	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
 	mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
+	mux.Handle("/current_status", http.HandlerFunc(currentStatusHandler))
 
 	// protected actions
 	mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
@@ -136,8 +137,15 @@ func main() {
 	mux.Handle("/createActivity", basicAuthMiddleware(users, http.HandlerFunc(createActivityHandler)))
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
 	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
-	mux.Handle("/current_status", basicAuthMiddleware(users, http.HandlerFunc(currentStatusHandler)))
-	mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
+	mux.Handle("/work_status", basicAuthMiddleware(users, http.HandlerFunc(workStatusHandler)))
+	//mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
+
+	// barcodes page
+	mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
+
+	// static files (CSS, JS, images)
+	fs := http.FileServer(http.Dir("static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	// clock in/out via dropdown
 	mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
@@ -146,8 +154,8 @@ func main() {
 	mux.Handle("/scan", http.HandlerFunc(scanHandler))
 	mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
 
-	log.Printf("Starting server on :8080…")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Printf("Starting server on :8083…")
+	log.Fatal(http.ListenAndServe(":8083", mux))
 }
 
 // indexHandler shows the home page
@@ -193,6 +201,7 @@ func loginHandler(users map[string]AuthUser) http.HandlerFunc {
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	// Löscht die Session und leitet zur Login-Seite weiter
 	session, _ := store.Get(r, "session")
 	session.Options.MaxAge = -1 // Löscht das Cookie
 	session.Save(r, w)
@@ -212,66 +221,6 @@ type Entry struct {
 
 // Zeitformat: DD.MM.YYYY HH:MM[:SS]
 const timeLayout = "02.01.2006 15:04:05" // oder ohne Sekunden "02.01.2006 15:04"
-
-func entriesViewHandler(w http.ResponseWriter, r *http.Request) {
-	// Zeitformat wie gewohnt
-	const timeLayout = "02.01.2006 15:04:05"
-
-	if r.Method == "POST" {
-		r.ParseForm()
-		user := r.Form.Get("user")
-		activity := r.Form.Get("activity")
-		start := r.Form.Get("start")
-		end := r.Form.Get("end")
-		id := r.Form.Get("id") // für Edit
-
-		// Zeit parsen
-		startTime, err := time.Parse(timeLayout, start)
-		if err != nil {
-			http.Error(w, "Startzeit ungültig", 400)
-			return
-		}
-		endTime, err := time.Parse(timeLayout, end)
-		if err != nil {
-			http.Error(w, "Endzeit ungültig", 400)
-			return
-		}
-
-		db := getDB()
-		defer db.Close()
-		var dbErr error
-		if id == "" {
-			// INSERT
-			_, dbErr = db.Exec("INSERT INTO entries (user, activity, start, end) VALUES (?, ?, ?, ?)", user, activity, startTime, endTime)
-		} else {
-			// UPDATE
-			_, dbErr = db.Exec("UPDATE entries SET user=?, activity=?, start=?, end=? WHERE id=?", user, activity, startTime, endTime, id)
-		}
-		if dbErr != nil {
-			http.Error(w, "DB Fehler", 500)
-			return
-		}
-		http.Redirect(w, r, "/entries_view", http.StatusSeeOther)
-		return
-	}
-
-	// GET: Seite anzeigen
-	entries := getEntries()
-	users := getUsers()
-	activities := getActivities()
-
-	tmpl, err := template.ParseFiles("templates/entries_view.html")
-	if err != nil {
-		http.Error(w, "Template-Fehler", 500)
-		return
-	}
-	tmpl.Execute(w, map[string]interface{}{
-		"Entries":    entries,
-		"Users":      users,
-		"Activities": activities,
-		"TimeLayout": timeLayout[:16], // Für das Input-Feld (ohne Sekunden)
-	})
-}
 
 // clockInOutForm shows the manual clock in/out form
 func clockInOutForm(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +298,17 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
 }
 
+func barcodesHandler(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Users      []User
+		Activities []Activity
+	}{
+		Users:      getUsers(),
+		Activities: getActivities(),
+	}
+	renderTemplate(w, "barcodes", data)
+}
+
 // createActivityHandler processes adding a new activity
 func createActivityHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
@@ -389,22 +349,47 @@ func clockInOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
-	db := getDB()
-	defer db.Close()
-	stmt, err := db.Prepare("INSERT INTO entries (date, type_id, user_id) VALUES (?, ?, ?)")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmt.Close()
 
-	now := time.Now().Format(time.RFC3339)
-	uid, _ := strconv.Atoi(userID)
-	aid, _ := strconv.Atoi(activityID)
-	if _, err := stmt.Exec(now, aid, uid); err != nil {
-		log.Fatal(err)
-	}
+	createEntry(userID, activityID, time.Now())
 
+	// Redirect back to the referring page
 	http.Redirect(w, r, r.Header.Get("Referer"), http.StatusSeeOther)
+}
+
+type PageData struct {
+	WorkHoursTable     TableData
+	CurrentStatusTable TableData
+}
+
+func workStatusHandler(w http.ResponseWriter, r *http.Request) {
+	workData := getWorkHoursData()
+	statusData := getCurrentStatusData()
+
+	workRows := make([][]interface{}, len(workData))
+	for i, d := range workData {
+		workRows[i] = []interface{}{d.UserName, d.WorkDate, d.WorkHours}
+	}
+
+	statusRows := make([][]interface{}, len(statusData))
+	for i, d := range statusData {
+		statusRows[i] = []interface{}{d.UserName, d.Status, d.Date}
+	}
+
+	pageData := PageData{
+		WorkHoursTable: TableData{
+			Headers: []string{"User Name", "Work Date", "Work Hours"},
+			Rows:    workRows,
+		},
+		CurrentStatusTable: TableData{
+			Headers: []string{"User Name", "Status", "Date"},
+			Rows:    statusRows,
+		},
+	}
+
+	tmpl := template.Must(template.New("page").ParseFiles("templates/layout.html")) // Oder dein Template-Setup
+	if err := tmpl.ExecuteTemplate(w, "page", pageData); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // workHoursHandler shows the work hours table
@@ -415,7 +400,7 @@ func workHoursHandler(w http.ResponseWriter, r *http.Request) {
 	for i, d := range data {
 		rows[i] = []interface{}{d.UserName, d.WorkDate, d.WorkHours}
 	}
-	renderHTMLTable(w, TableData{Headers: headers, Rows: rows})
+	renderHTMLTable(w, "Work Hours", TableData{Headers: headers, Rows: rows})
 }
 
 // currentStatusHandler shows who is currently clocked in/out
@@ -426,7 +411,7 @@ func currentStatusHandler(w http.ResponseWriter, r *http.Request) {
 	for i, d := range data {
 		rows[i] = []interface{}{d.UserName, d.Status, d.Date}
 	}
-	renderHTMLTable(w, TableData{Headers: headers, Rows: rows})
+	renderHTMLTable(w, "Current Status", TableData{Headers: headers, Rows: rows})
 }
 
 // scanHandler serves the barcode-scanning page
@@ -475,29 +460,4 @@ func bulkClockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// TableData is used to render a generic HTML table
-type TableData struct {
-	Headers []string
-	Rows    [][]interface{}
-}
-
-// renderHTMLTable renders a simple HTML table
-func renderHTMLTable(w io.Writer, td TableData) {
-	const tmpl = `
-<table class="table table-striped">
-  <thead>
-    <tr>{{- range .Headers }}<th>{{ . }}</th>{{- end }}</tr>
-  </thead>
-  <tbody>
-    {{- range .Rows }}
-      <tr>{{- range . }}<td>{{ . }}</td>{{- end }}</tr>
-    {{- end }}
-  </tbody>
-</table>`
-	t := template.Must(template.New("table").Parse(tmpl))
-	if err := t.Execute(w, td); err != nil {
-		log.Printf("Error rendering table: %v", err)
-	}
 }
