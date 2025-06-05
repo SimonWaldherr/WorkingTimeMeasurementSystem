@@ -20,7 +20,7 @@ To run the project, follow these steps:
 
 Before clocking in and out, you need to create a department, then a user and an activity. Follow these steps to start using the timekeeping system:
 
-* Access the web interface at http://localhost:8080.
+* Access the web interface at http://localhost:8083.
 * Navigate to the /addDepartment page to create a new department.
 * Navigate to the /addUser page to create a new user and associate them with a department.
 * Navigate to the /addActivity page to create a new activity.
