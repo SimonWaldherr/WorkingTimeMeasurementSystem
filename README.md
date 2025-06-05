@@ -4,7 +4,7 @@
 
 This project demonstrates how to create a simple timekeeping system using Golang and SQLite. The application allows users to clock in and out, track work hours, and view their current status. The data is organized by departments, users, and activities.
 
-Please note that this project is meant for demonstration purposes only and does not include any authentication, authorization, or security features. It is meant to showcase the ease of programming a timekeeping system in Golang.
+Please note that a minimal CSV-based login system is included for demonstration purposes, but it lacks advanced security features. The project is intended solely to showcase the ease of programming a timekeeping system in Golang.
 
 ## Getting Started
 
