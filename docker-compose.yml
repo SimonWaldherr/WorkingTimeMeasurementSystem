@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  working-time-app:
+    build: .
+    ports:
+      - "8083:8083"
+    environment:
+      - DB_BACKEND=sqlite
+      - SQLITE_PATH=/data/time_tracking.db
+      - FEATURE_MULTI_TENANT=true
+      - SESSION_SECRET=your-very-long-secret-key-here-at-least-32-chars
+    volumes:
+      - ./data:/data
+      - ./config.json:/root/config.json:ro
+      - ./credentials.csv:/root/credentials.csv:ro
+    restart: unless-stopped
+    networks:
+      - working-time-network
+
+  # Optional: MSSQL Server for production
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    networks:
+      - working-time-network
+    profiles:
+      - with-mssql
+
+  # Optional: Nginx reverse proxy for multi-tenant routing
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - working-time-app
+    networks:
+      - working-time-network
+    profiles:
+      - with-proxy
+
+volumes:
+  mssql-data:
+
+networks:
+  working-time-network:
+    driver: bridge

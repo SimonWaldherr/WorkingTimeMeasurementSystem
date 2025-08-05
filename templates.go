@@ -65,6 +65,26 @@ func renderTemplate(w http.ResponseWriter, page string, data interface{}) {
 		return
 	}
 
+	// Add template functions for tenant support
+	tmpl = tmpl.Funcs(template.FuncMap{
+		"isMultiTenant": func() bool {
+			return getConfig().Features.MultiTenant
+		},
+		"hasFeature": func(feature string) bool {
+			config := getConfig()
+			switch feature {
+			case "barcode_scanning":
+				return config.Features.BarcodeScanning
+			case "reporting":
+				return config.Features.Reporting
+			case "email_notifications":
+				return config.Features.EmailNotifications
+			default:
+				return false
+			}
+		},
+	})
+
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
 	}

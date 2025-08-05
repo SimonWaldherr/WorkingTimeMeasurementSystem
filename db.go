@@ -114,6 +114,11 @@ func tbl(name string) string {
 	return name
 }
 
+// tblWithTenant returns table name with tenant context for multi-tenant queries
+func tblWithTenant(name string, tenantID int) string {
+	return tbl(name) // For now, we'll use tenant_id column filtering
+}
+
 //---------------------------------------------------------------------
 // Schema anlegen
 //---------------------------------------------------------------------
@@ -155,18 +160,21 @@ type User struct {
 	Email        string
 	Position     string
 	DepartmentID int
+	TenantID     int // Added for multi-tenant support
 }
 
 type Activity struct {
-	ID      int
-	Status  string
-	Work    int
-	Comment string
+	ID       int
+	Status   string
+	Work     int
+	Comment  string
+	TenantID int // Added for multi-tenant support
 }
 
 type Department struct {
-	ID   int
-	Name string
+	ID       int
+	Name     string
+	TenantID int // Added for multi-tenant support
 }
 
 //---------------------------------------------------------------------

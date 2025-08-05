@@ -1,0 +1,36 @@
+{
+  "database": {
+    "backend": "sqlite",
+    "sqlite": {
+      "path": "time_tracking.db"
+    },
+    "mssql": {
+      "server": "sql-cluster-05",
+      "database": "wtm",
+      "user": "johndoe",
+      "password": "secret",
+      "port": 1433
+    },
+    "auto_migrate": true
+  },
+  "server": {
+    "port": 8083,
+    "host": "",
+    "read_timeout": 15,
+    "write_timeout": 15,
+    "idle_timeout": 60,
+    "max_header_bytes": 1048576
+  },
+  "security": {
+    "session_secret": "your-very-long-secret-key-here-at-least-32-chars",
+    "session_duration": 30,
+    "csrf_protection": false,
+    "rate_limiting": false
+  },
+  "features": {
+    "multi_tenant": true,
+    "barcode_scanning": true,
+    "reporting": true,
+    "email_notifications": false
+  }
+}

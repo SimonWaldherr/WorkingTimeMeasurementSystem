@@ -1,19 +1,14 @@
 package main
 
 import (
-	//"context"
-	//"encoding/base64"
+	"context"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"html/template"
-
-	//"database/sql"
-
 	"log"
 	"net/http"
 	"os"
-
-	//"strings"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -73,10 +68,19 @@ func loadCredentials(filename string) (map[string]AuthUser, error) {
 	return users, nil
 }
 
-var store = sessions.NewCookieStore([]byte("change-me-very-secret"))
+var store *sessions.CookieStore
 
-// Session duration in minutes
-const sessionDuration = 30
+func initSessionStore() {
+	config := getConfig()
+	store = sessions.NewCookieStore([]byte(config.Security.SessionSecret))
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   config.Security.SessionDuration * 60, // Convert minutes to seconds
+		HttpOnly: true,
+		Secure:   false, // Set to true in production with HTTPS
+		SameSite: http.SameSiteLaxMode,
+	}
+}
 
 func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -106,25 +110,50 @@ func unauthorized(w http.ResponseWriter) {
 }
 
 func init() {
+	// Initialize configuration
+	initConfig()
+	// Validate configuration
+	if err := validateConfig(); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+	// Initialize session store
+	initSessionStore()
 	// ensure schema is in place
 	createDatabaseAndTables()
 }
 
 func main() {
+	config := getConfig()
+	
 	// load auth users
 	users, err := loadCredentials("credentials.csv")
 	if err != nil {
 		log.Fatalf("Error loading credentials: %v", err)
 	}
 
+	// Initialize service layer
+	service := NewWorkingTimeService()
+	defer service.Close()
+
 	mux := http.NewServeMux()
+
+	// Apply tenant middleware if multi-tenant is enabled
+	var handler http.Handler = mux
+	if config.Features.MultiTenant {
+		handler = tenantMiddleware(mux)
+	}
 
 	// Login & Logout
 	mux.Handle("/login", loginHandler(users))
 	mux.HandleFunc("/logout", logoutHandler)
 
-	// core pages (unprotected)
-	mux.Handle("/", http.HandlerFunc(indexHandler))
+	// core pages (unprotected for demo, protected for multi-tenant)
+	if config.Features.MultiTenant {
+		mux.Handle("/", basicAuthMiddleware(users, http.HandlerFunc(indexHandler)))
+	} else {
+		mux.Handle("/", http.HandlerFunc(indexHandler))
+	}
+	
 	mux.Handle("/addUser", basicAuthMiddleware(users, http.HandlerFunc(addUserHandler)))
 	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
 	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
@@ -138,10 +167,13 @@ func main() {
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
 	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
 	mux.Handle("/work_status", basicAuthMiddleware(users, http.HandlerFunc(workStatusHandler)))
-	//mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
 
-	// barcodes page
-	mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
+	// barcodes page (if enabled)
+	if config.Features.BarcodeScanning {
+		mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
+		mux.Handle("/scan", http.HandlerFunc(scanHandler))
+		mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
+	}
 
 	// static files (CSS, JS, images)
 	fs := http.FileServer(http.Dir("static"))
@@ -150,18 +182,46 @@ func main() {
 	// clock in/out via dropdown
 	mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
 
-	// barcode-driven bulk clock
-	mux.Handle("/scan", http.HandlerFunc(scanHandler))
-	mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
-
-	log.Printf("Starting server on :8083…")
-	log.Fatal(http.ListenAndServe(":8083", mux))
+	serverAddr := fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
+	log.Printf("Starting server on %s…", serverAddr)
+	log.Printf("Multi-tenant mode: %v", config.Features.MultiTenant)
+	log.Printf("Database backend: %s", config.Database.Backend)
+	
+	server := &http.Server{
+		Addr:           serverAddr,
+		Handler:        handler,
+		ReadTimeout:    time.Duration(config.Server.ReadTimeout) * time.Second,
+		WriteTimeout:   time.Duration(config.Server.WriteTimeout) * time.Second,
+		IdleTimeout:    time.Duration(config.Server.IdleTimeout) * time.Second,
+		MaxHeaderBytes: config.Server.MaxHeaderBytes,
+	}
+	
+	log.Fatal(server.ListenAndServe())
 }
 
 // indexHandler shows the home page
 func indexHandler(w http.ResponseWriter, r *http.Request) {
-	users := getUsers()
-	activities := getActivities()
+	var users []User
+	var activities []Activity
+	
+	config := getConfig()
+	if config.Features.MultiTenant {
+		tenantCtx, err := getTenantFromContext(r.Context())
+		if err != nil {
+			http.Error(w, "Tenant context required", http.StatusBadRequest)
+			return
+		}
+		
+		service := NewWorkingTimeService()
+		defer service.Close()
+		
+		users, _ = service.GetUsersForTenant(r.Context(), tenantCtx.TenantID)
+		activities, _ = service.GetActivitiesForTenant(r.Context(), tenantCtx.TenantID)
+	} else {
+		users = getUsers()
+		activities = getActivities()
+	}
+	
 	data := struct {
 		Users      []User
 		Activities []Activity
