@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"regexp"
 	"log"
 	"os"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	_ "github.com/denisenkom/go-mssqldb"
 	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 //---------------------------------------------------------------------
@@ -24,6 +26,18 @@ var embeddedSQLiteSchema string
 //go:embed timetrack_init.mssql.sql
 var embeddedMSSQLSchema string
 
+//go:embed timetrack_init.mariadb.sql
+var embeddedMariaDBSchema string
+
+//go:embed timetrack_tenant.sql
+var embeddedSQLiteTenantSchema string
+
+//go:embed timetrack_tenant_mssql.sql
+var embeddedMSSQLTenantSchema string
+
+//go:embed timetrack_tenant_mariadb.sql
+var embeddedMariaDBTenantSchema string
+
 //---------------------------------------------------------------------
 // globale Konfiguration
 //---------------------------------------------------------------------
@@ -34,6 +48,9 @@ var (
 	mssqlServer, mssqlDB string
 	mssqlUser, mssqlPass string
 	mssqlPort            int
+	mariadbHost, mariadbDB string
+	mariadbUser, mariadbPass string
+	mariadbPort            int
 )
 
 // Hilfsfunktionen
@@ -66,6 +83,12 @@ func init() {
 		mssqlUser = getenv("MSSQL_USER", `johndoe`)
 		mssqlPass = getenv("MSSQL_PASSWORD", "secret")
 		mssqlPort = atoiDefault(getenv("MSSQL_PORT", "1433"), 1433)
+	case "mariadb", "mysql":
+		mariadbHost = getenv("MARIADB_HOST", "127.0.0.1")
+		mariadbDB = getenv("MARIADB_DATABASE", "wtm")
+		mariadbUser = getenv("MARIADB_USER", "wtm")
+		mariadbPass = getenv("MARIADB_PASSWORD", "secret")
+		mariadbPort = atoiDefault(getenv("MARIADB_PORT", "3306"), 3306)
 	default: // sqlite
 		sqlitePath = getenv("SQLITE_PATH", "time_tracking.db")
 	}
@@ -90,6 +113,11 @@ func getDB() *sql.DB {
 		dsn = fmt.Sprintf(
 			"server=%s;database=%s;user id=%s;password=%s;port=%d;encrypt=disable",
 			mssqlServer, mssqlDB, mssqlUser, mssqlPass, mssqlPort,
+		)
+	case "mariadb", "mysql":
+		driver = "mysql"
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=Local",
+			mariadbUser, mariadbPass, mariadbHost, mariadbPort, mariadbDB,
 		)
 	default: // sqlite
 		driver = "sqlite3"
@@ -127,9 +155,20 @@ func createDatabaseAndTables() {
 	switch dbBackend {
 	case "sqlite":
 		execBatches(embeddedSQLiteSchema, ";\n")
+		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
+			execBatches(embeddedSQLiteTenantSchema, ";\n")
+		}
 	case "mssql":
 		if os.Getenv("DB_AUTO_MIGRATE") == "1" {
 			//execBatches(embeddedMSSQLSchema, "\nGO")
+		}
+		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
+			execBatches(embeddedMSSQLTenantSchema, "\nGO")
+		}
+	case "mariadb", "mysql":
+		execBatches(embeddedMariaDBSchema, ";\n")
+		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
+			execBatches(embeddedMariaDBTenantSchema, ";\n")
 		}
 	}
 }
@@ -147,6 +186,16 @@ func execBatches(script, sep string) {
 			log.Printf("Schema-Batch-Fehler: %v\n%s\n", err, stmt)
 		}
 	}
+}
+
+// adaptQuery replaces named parameters with positional ones for backends not supporting named params (MySQL/MariaDB)
+var namedParamRegex = regexp.MustCompile(`@[a-zA-Z0-9_]+`)
+
+func adaptQuery(q string) string {
+	if dbBackend == "mariadb" || dbBackend == "mysql" {
+		return namedParamRegex.ReplaceAllString(q, "?")
+	}
+	return q
 }
 
 //---------------------------------------------------------------------
@@ -273,7 +322,7 @@ func getUser(id string) User {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf("SELECT id, name, stampkey, email, position, department_id FROM %s WHERE id=@id", tbl("users"))
+	query := adaptQuery(fmt.Sprintf("SELECT id, name, stampkey, email, position, department_id FROM %s WHERE id=@id", tbl("users")))
 	var u User
 	if err := db.QueryRow(query, sql.Named("id", id)).
 		Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Position, &u.DepartmentID); err != nil {
@@ -330,7 +379,7 @@ func getActivity(id string) Activity {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf("SELECT id, status, work, comment FROM %s WHERE id=@id", tbl("type"))
+	query := adaptQuery(fmt.Sprintf("SELECT id, status, work, comment FROM %s WHERE id=@id", tbl("type")))
 	var a Activity
 	if err := db.QueryRow(query, sql.Named("id", id)).
 		Scan(&a.ID, &a.Status, &a.Work, &a.Comment); err != nil {
@@ -343,7 +392,7 @@ func getDepartment(id string) Department {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf("SELECT id, name FROM %s WHERE id=@id", tbl("departments"))
+	query := adaptQuery(fmt.Sprintf("SELECT id, name FROM %s WHERE id=@id", tbl("departments")))
 	var d Department
 	if err := db.QueryRow(query, sql.Named("id", id)).
 		Scan(&d.ID, &d.Name); err != nil {
@@ -356,13 +405,28 @@ func getUserIDFromStampKey(stampKey string) string {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf("SELECT id FROM %s WHERE stampkey=@sk", tbl("users"))
+	query := adaptQuery(fmt.Sprintf("SELECT id FROM %s WHERE stampkey=@sk", tbl("users")))
 	var id string
 	if err := db.QueryRow(query, sql.Named("sk", stampKey)).Scan(&id); err != nil {
 		// kein fatal – kann vorkommen, wenn Karte unbekannt
 		return ""
 	}
 	return id
+}
+
+func getUserIDByEmail(email string) (string, error) {
+	db := getDB()
+	defer db.Close()
+
+	query := adaptQuery(fmt.Sprintf("SELECT id FROM %s WHERE email=@eml", tbl("users")))
+	var id string
+	if err := db.QueryRow(query, sql.Named("eml", email)).Scan(&id); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return id, nil
 }
 
 // ----------- INSERT --------------------------------------------------
@@ -379,7 +443,7 @@ func createUniqueStampKey() int {
 		stampKey := time.Now().UnixNano()%900000000000 + 100000000000 // 12-stellig
 
 		// Überprüfen, ob der Stampkey bereits existiert
-		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE stampkey=@sk", tbl("users"))
+		query := adaptQuery(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE stampkey=@sk", tbl("users")))
 		var count int
 		if err := db.QueryRow(query, sql.Named("sk", stampKey)).Scan(&count); err != nil {
 			log.Fatal(err)
@@ -400,7 +464,7 @@ func createUser(name, stampkey, email, position, departmentID string) {
 		stampkey = strconv.Itoa(createUniqueStampKey())
 	} else {
 		// Überprüfen, ob der Stampkey bereits existiert
-		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE stampkey=@sk", tbl("users"))
+		query := adaptQuery(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE stampkey=@sk", tbl("users")))
 		var count int
 		if err := db.QueryRow(query, sql.Named("sk", stampkey)).Scan(&count); err != nil {
 			log.Fatal(err)
@@ -412,8 +476,8 @@ func createUser(name, stampkey, email, position, departmentID string) {
 	}
 
 	dept, _ := strconv.Atoi(departmentID)
-	query := fmt.Sprintf(`INSERT INTO %s (name, stampkey, email, position, department_id)
-	                       VALUES (@name,@sk,@mail,@pos,@dept)`, tbl("users"))
+	query := adaptQuery(fmt.Sprintf(`INSERT INTO %s (name, stampkey, email, position, department_id)
+						   VALUES (@name,@sk,@mail,@pos,@dept)`, tbl("users")))
 	_, err := db.Exec(query,
 		sql.Named("name", name),
 		sql.Named("sk", stampkey),
@@ -431,8 +495,8 @@ func createActivity(status, work, comment string) {
 	defer db.Close()
 
 	workInt, _ := strconv.Atoi(work)
-	query := fmt.Sprintf(`INSERT INTO %s (status, work, comment)
-	                       VALUES (@status,@work,@comment)`, tbl("type"))
+	query := adaptQuery(fmt.Sprintf(`INSERT INTO %s (status, work, comment)
+						   VALUES (@status,@work,@comment)`, tbl("type")))
 	_, err := db.Exec(query,
 		sql.Named("status", status),
 		sql.Named("work", workInt),
@@ -447,7 +511,7 @@ func createDepartment(name string) {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf("INSERT INTO %s (name) VALUES (@name)", tbl("departments"))
+	query := adaptQuery(fmt.Sprintf("INSERT INTO %s (name) VALUES (@name)", tbl("departments")))
 	if _, err := db.Exec(query, sql.Named("name", name)); err != nil {
 		log.Fatal(err)
 	}
@@ -458,8 +522,8 @@ func createEntry(userID, activityID string, entrydate time.Time) {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf(`INSERT INTO %s (user_id, type_id, date)
-						VALUES (@uid, @aid, @date)`, tbl("entries"))
+	query := adaptQuery(fmt.Sprintf(`INSERT INTO %s (user_id, type_id, date)
+						VALUES (@uid, @aid, @date)`, tbl("entries")))
 	_, err := db.Exec(query,
 		sql.Named("uid", userID),
 		sql.Named("aid", activityID),
@@ -477,9 +541,9 @@ func updateUser(id, name, stampkey, email, position, departmentID string) {
 	defer db.Close()
 
 	dept, _ := strconv.Atoi(departmentID)
-	query := fmt.Sprintf(`UPDATE %s
+	query := adaptQuery(fmt.Sprintf(`UPDATE %s
 	                      SET name=@name, stampkey=@sk, email=@mail, position=@pos, department_id=@dept
-	                      WHERE id=@id`, tbl("users"))
+					  WHERE id=@id`, tbl("users")))
 	_, err := db.Exec(query,
 		sql.Named("name", name),
 		sql.Named("sk", stampkey),
@@ -498,9 +562,9 @@ func updateActivity(id, status, work, comment string) {
 	defer db.Close()
 
 	workInt, _ := strconv.Atoi(work)
-	query := fmt.Sprintf(`UPDATE %s
+	query := adaptQuery(fmt.Sprintf(`UPDATE %s
 	                      SET status=@status, work=@work, comment=@comment
-	                      WHERE id=@id`, tbl("type"))
+					  WHERE id=@id`, tbl("type")))
 	_, err := db.Exec(query,
 		sql.Named("status", status),
 		sql.Named("work", workInt),

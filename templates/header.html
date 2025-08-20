@@ -11,12 +11,19 @@
         <li class="nav-item"><a class="nav-link" href="/addUser">Add User</a></li>
         <li class="nav-item"><a class="nav-link" href="/addActivity">Add Activity</a></li>
         <li class="nav-item"><a class="nav-link" href="/addDepartment">Add Dept</a></li>
-        <li class="nav-item"><a class="nav-link" href="/clockInOutForm">Clock In/Out</a></li>
+  {{ if clockEnabled "input" }}
+  <li class="nav-item"><a class="nav-link" href="/clockInOutForm">Clock In/Out</a></li>
+  {{ end }}
+  {{ if clockEnabled "button" }}
+  <li class="nav-item"><a class="nav-link" href="/clockButton">Button Clock</a></li>
+  {{ end }}
         <!-- 
         <li class="nav-item"><a class="nav-link" href="/work_hours">Work Hours</a></li>
         <li class="nav-item"><a class="nav-link" href="/current_status">Status</a></li>
         <li class="nav-item"><a class="nav-link" href="/work_status">Work Status</a></li>-->
-        <li class="nav-item"><a class="nav-link" href="/barcodes">Barcodes</a></li>
+  {{ if hasFeature "barcode_scanning" }}
+  <li class="nav-item"><a class="nav-link" href="/barcodes">Barcodes</a></li>
+  {{ end }}
       </ul>
     </div>
   </div>

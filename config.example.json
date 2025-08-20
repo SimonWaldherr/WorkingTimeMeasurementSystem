@@ -11,6 +11,13 @@
       "password": "secret",
       "port": 1433
     },
+    "mariadb": {
+      "host": "127.0.0.1",
+      "database": "wtm",
+      "user": "wtm",
+      "password": "secret",
+      "port": 3306
+    },
     "auto_migrate": true
   },
   "server": {
@@ -31,6 +38,7 @@
     "multi_tenant": true,
     "barcode_scanning": true,
     "reporting": true,
-    "email_notifications": false
+  "email_notifications": false,
+  "clock_mode": "both"
   }
 }

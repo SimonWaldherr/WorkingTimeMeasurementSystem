@@ -13,6 +13,37 @@ var templatesFS embed.FS
 
 var base *template.Template
 
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"isMultiTenant": func() bool {
+			return getConfig().Features.MultiTenant
+		},
+		"hasFeature": func(feature string) bool {
+			config := getConfig()
+			switch feature {
+			case "barcode_scanning":
+				return config.Features.BarcodeScanning
+			case "reporting":
+				return config.Features.Reporting
+			case "email_notifications":
+				return config.Features.EmailNotifications
+			default:
+				return false
+			}
+		},
+		"clockMode": func() string {
+			return getConfig().Features.ClockMode
+		},
+		"clockEnabled": func(mode string) bool {
+			cm := getConfig().Features.ClockMode
+			if cm == "both" {
+				return true
+			}
+			return cm == mode
+		},
+	}
+}
+
 func init() {
 	const templatesDir = "templates"
 
@@ -20,7 +51,7 @@ func init() {
 	if info, err := os.Stat(templatesDir); err == nil && info.IsDir() {
 		// Folder exists, parse templates from disk
 		var err error
-		base, err = template.ParseFiles(
+		base, err = template.New("base").Funcs(templateFuncs()).ParseFiles(
 			path.Join(templatesDir, "base.html"),
 			path.Join(templatesDir, "header.html"),
 			path.Join(templatesDir, "footer.html"),
@@ -31,7 +62,7 @@ func init() {
 	} else {
 		// Folder does not exist, parse templates from embedded FS
 		var err error
-		base, err = template.ParseFS(templatesFS, "templates/base.html", "templates/header.html", "templates/footer.html")
+		base, err = template.New("base").Funcs(templateFuncs()).ParseFS(templatesFS, "templates/base.html", "templates/header.html", "templates/footer.html")
 		if err != nil {
 			panic("failed to parse embedded templates: " + err.Error())
 		}
@@ -39,6 +70,7 @@ func init() {
 }
 
 func renderTemplate(w http.ResponseWriter, page string, data interface{}) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// Clone base to avoid polluting it
 	tmpl, err := base.Clone()
 	if err != nil {
@@ -65,25 +97,8 @@ func renderTemplate(w http.ResponseWriter, page string, data interface{}) {
 		return
 	}
 
-	// Add template functions for tenant support
-	tmpl = tmpl.Funcs(template.FuncMap{
-		"isMultiTenant": func() bool {
-			return getConfig().Features.MultiTenant
-		},
-		"hasFeature": func(feature string) bool {
-			config := getConfig()
-			switch feature {
-			case "barcode_scanning":
-				return config.Features.BarcodeScanning
-			case "reporting":
-				return config.Features.Reporting
-			case "email_notifications":
-				return config.Features.EmailNotifications
-			default:
-				return false
-			}
-		},
-	})
+	// Ensure funcs are set before parsing the page-level template
+	tmpl = tmpl.Funcs(templateFuncs())
 
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
@@ -99,6 +114,7 @@ type TableData struct {
 
 // renderHTMLTable renders a simple HTML table
 func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// Clone base to avoid polluting it
 	tmpl, err := base.Clone()
 	if err != nil {
@@ -129,6 +145,7 @@ func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
 
 func renderError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := map[string]interface{}{
 		"Status":  status,
 		"Message": message,

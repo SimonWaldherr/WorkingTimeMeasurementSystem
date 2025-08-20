@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"encoding/json"
 	"log"
 	"os"
@@ -17,9 +18,10 @@ type Config struct {
 }
 
 type DatabaseConfig struct {
-	Backend  string `json:"backend"`  // sqlite, mssql
+	Backend  string `json:"backend"`  // sqlite, mssql, mariadb
 	SQLite   SQLiteConfig `json:"sqlite"`
 	MSSQL    MSSQLConfig  `json:"mssql"`
+	MariaDB  MariaDBConfig `json:"mariadb"`
 	AutoMigrate bool `json:"auto_migrate"`
 }
 
@@ -29,6 +31,14 @@ type SQLiteConfig struct {
 
 type MSSQLConfig struct {
 	Server   string `json:"server"`
+	Database string `json:"database"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Port     int    `json:"port"`
+}
+
+type MariaDBConfig struct {
+	Host     string `json:"host"`
 	Database string `json:"database"`
 	User     string `json:"user"`
 	Password string `json:"password"`
@@ -56,6 +66,7 @@ type FeatureConfig struct {
 	BarcodeScanning bool `json:"barcode_scanning"`
 	Reporting      bool `json:"reporting"`
 	EmailNotifications bool `json:"email_notifications"`
+	ClockMode      string `json:"clock_mode"` // input | button | both
 }
 
 var appConfig *Config
@@ -74,6 +85,13 @@ func initConfig() {
 				User:     getEnv("MSSQL_USER", "johndoe"),
 				Password: getEnv("MSSQL_PASSWORD", "secret"),
 				Port:     getEnvInt("MSSQL_PORT", 1433),
+			},
+			MariaDB: MariaDBConfig{
+				Host:     getEnv("MARIADB_HOST", "127.0.0.1"),
+				Database: getEnv("MARIADB_DATABASE", "wtm"),
+				User:     getEnv("MARIADB_USER", "wtm"),
+				Password: getEnv("MARIADB_PASSWORD", "secret"),
+				Port:     getEnvInt("MARIADB_PORT", 3306),
 			},
 			AutoMigrate: getEnvBool("DB_AUTO_MIGRATE", true),
 		},
@@ -96,6 +114,7 @@ func initConfig() {
 			BarcodeScanning:    getEnvBool("FEATURE_BARCODE_SCANNING", true),
 			Reporting:          getEnvBool("FEATURE_REPORTING", true),
 			EmailNotifications: getEnvBool("FEATURE_EMAIL_NOTIFICATIONS", false),
+			ClockMode:          strings.ToLower(getEnv("FEATURE_CLOCK_MODE", "both")),
 		},
 	}
 
@@ -118,6 +137,11 @@ func initConfig() {
 	mssqlUser = config.Database.MSSQL.User
 	mssqlPass = config.Database.MSSQL.Password
 	mssqlPort = config.Database.MSSQL.Port
+	mariadbHost = config.Database.MariaDB.Host
+	mariadbDB = config.Database.MariaDB.Database
+	mariadbUser = config.Database.MariaDB.User
+	mariadbPass = config.Database.MariaDB.Password
+	mariadbPort = config.Database.MariaDB.Port
 }
 
 // getConfig returns the current configuration
@@ -183,13 +207,16 @@ func validateConfig() error {
 	config := getConfig()
 	
 	// Validate database configuration
-	if config.Database.Backend != "sqlite" && config.Database.Backend != "mssql" {
-		return log.Printf("Invalid database backend: %s", config.Database.Backend)
+	switch strings.ToLower(config.Database.Backend) {
+	case "sqlite", "mssql", "mariadb", "mysql":
+		// ok
+	default:
+		return fmt.Errorf("invalid database backend: %s", config.Database.Backend)
 	}
 	
 	// Validate server configuration
 	if config.Server.Port <= 0 || config.Server.Port > 65535 {
-		return log.Printf("Invalid server port: %d", config.Server.Port)
+		return fmt.Errorf("invalid server port: %d", config.Server.Port)
 	}
 	
 	// Validate security configuration

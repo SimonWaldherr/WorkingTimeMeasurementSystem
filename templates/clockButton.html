@@ -1,0 +1,28 @@
+{{ define "title" }}Button Clock{{ end }}
+{{ define "content" }}
+<div class="container py-4">
+  <h2 class="mb-4">Button Clock</h2>
+  <form method="post" action="/clockButton" class="row g-3" autocomplete="off">
+    <div class="col-md-4">
+      <label for="email" class="form-label">Email</label>
+      <input type="email" class="form-control" id="email" name="email" required>
+    </div>
+    <div class="col-md-4">
+      <label for="password" class="form-label">Password</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <div class="col-md-4">
+      <label for="activity_id" class="form-label">Activity</label>
+      <select class="form-select" id="activity_id" name="activity_id" required>
+        {{ range .Activities }}
+        <option value="{{ .ID }}">{{ .Status }}</option>
+        {{ end }}
+      </select>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Clock</button>
+      <a href="/" class="btn btn-secondary ms-2">Home</a>
+    </div>
+  </form>
+</div>
+{{ end }}

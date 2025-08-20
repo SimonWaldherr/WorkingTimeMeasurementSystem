@@ -17,7 +17,7 @@ A comprehensive time tracking system built with Go, supporting both single-tenan
 
 ### Advanced Features
 - **Barcode Scanning**: RFID/Barcode integration for quick clock in/out
-- **Multi-Database Support**: SQLite for development, MSSQL for production
+- **Multi-Database Support**: SQLite for development, MSSQL or MariaDB/MySQL for production
 - **Configurable Security**: Session management, rate limiting, CSRF protection
 - **Docker Support**: Easy deployment with Docker and Docker Compose
 - **Nginx Integration**: Reverse proxy for multi-tenant routing
@@ -87,7 +87,7 @@ The application supports both environment variables and JSON configuration files
 ```json
 {
   "database": {
-    "backend": "sqlite",           // "sqlite" or "mssql"
+   "backend": "sqlite",           // "sqlite", "mssql" or "mariadb"
     "auto_migrate": true
   },
   "server": {
@@ -103,6 +103,7 @@ The application supports both environment variables and JSON configuration files
   "features": {
     "multi_tenant": true,
     "barcode_scanning": true,
+   "clock_mode": "both",         // input | button | both
     "reporting": true,
     "email_notifications": false
   }
@@ -111,10 +112,12 @@ The application supports both environment variables and JSON configuration files
 
 ### Environment Variables
 
-- `DB_BACKEND`: Database type (sqlite/mssql)
+- `DB_BACKEND`: Database type (sqlite/mssql/mariadb)
 - `SQLITE_PATH`: SQLite database file path
 - `MSSQL_SERVER`: MSSQL server address
+- `MARIADB_HOST` / `MARIADB_DATABASE` / `MARIADB_USER` / `MARIADB_PASSWORD` / `MARIADB_PORT`
 - `FEATURE_MULTI_TENANT`: Enable multi-tenant mode
+- `FEATURE_CLOCK_MODE`: input | button | both
 - `SESSION_SECRET`: Secret key for session encryption
 - `SERVER_PORT`: HTTP server port
 

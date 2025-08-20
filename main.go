@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -157,7 +157,10 @@ func main() {
 	mux.Handle("/addUser", basicAuthMiddleware(users, http.HandlerFunc(addUserHandler)))
 	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
 	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
-	mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
+	if config.Features.ClockMode == "input" || config.Features.ClockMode == "both" {
+		mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
+		mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
+	}
 	mux.Handle("/current_status", http.HandlerFunc(currentStatusHandler))
 
 	// protected actions
@@ -175,12 +178,16 @@ func main() {
 		mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
 	}
 
+	// button clock mode
+	if config.Features.ClockMode == "button" || config.Features.ClockMode == "both" {
+		mux.Handle("/clockButton", http.HandlerFunc(clockButtonHandler))
+	}
+
 	// static files (CSS, JS, images)
 	fs := http.FileServer(http.Dir("static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	// clock in/out via dropdown
-	mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
+	// clock in/out via dropdown handled above conditionally
 
 	serverAddr := fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
 	log.Printf("Starting server on %s…", serverAddr)
@@ -250,11 +257,7 @@ func loginHandler(users map[string]AuthUser) http.HandlerFunc {
 		}
 		session, _ := store.Get(r, "session")
 		session.Values["username"] = user.Username
-		session.Options = &sessions.Options{
-			Path:     "/",
-			MaxAge:   sessionDuration * 60, // in Sekunden
-			HttpOnly: true,
-		}
+	// reuse global store options already set
 		session.Save(r, w)
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
@@ -520,4 +523,59 @@ func bulkClockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// clockButtonHandler allows clocking by email+password and selecting activity
+func clockButtonHandler(w http.ResponseWriter, r *http.Request) {
+	cfg := getConfig()
+	if !(cfg.Features.ClockMode == "button" || cfg.Features.ClockMode == "both") {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		data := struct{ Activities []Activity }{Activities: getActivities()}
+		renderTemplate(w, "clockButton", data)
+		return
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			renderBadRequest(w, err)
+			return
+		}
+		email := r.FormValue("email")
+		password := r.FormValue("password")
+		activityID := r.FormValue("activity_id")
+		if email == "" || password == "" || activityID == "" {
+			renderBadRequest(w, fmt.Errorf("missing fields"))
+			return
+		}
+		// verify against CSV demo auth
+		users, err := loadCredentials("credentials.csv")
+		if err != nil {
+			renderInternalServerError(w, err)
+			return
+		}
+		var matched bool
+		for _, u := range users {
+			if strings.EqualFold(u.Username, email) && u.Password == password {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			renderUnauthorized(w, fmt.Errorf("invalid credentials"))
+			return
+		}
+		uid, err := getUserIDByEmail(email)
+		if err != nil || uid == "" {
+			renderBadRequest(w, fmt.Errorf("user not found for email"))
+			return
+		}
+		createEntry(uid, activityID, time.Now())
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
