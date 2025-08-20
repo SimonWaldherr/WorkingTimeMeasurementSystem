@@ -1,0 +1,39 @@
+{{ define "title" }}Edit User{{ end }}
+{{ define "content" }}
+<div class="card p-4 mx-auto" style="max-width: 600px;">
+  <h2 class="mb-4">Edit User</h2>
+  <form action="/editUser" method="POST">
+    <input type="hidden" name="id" value="{{ .User.ID }}">
+    <div class="mb-3">
+      <label for="name" class="form-label">Full Name</label>
+      <input type="text" id="name" name="name" class="form-control" value="{{ .User.Name }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="stampkey" class="form-label">Stamp Key</label>
+      <input type="text" id="stampkey" name="stampkey" class="form-control" value="{{ .User.Stampkey }}">
+    </div>
+    <div class="mb-3">
+      <label for="email" class="form-label">Email Address</label>
+      <input type="email" id="email" name="email" class="form-control" value="{{ .User.Email }}">
+    </div>
+    <div class="mb-3">
+      <label for="password" class="form-label">Password</label>
+      <input type="password" id="password" name="password" class="form-control" placeholder="Leave blank to keep unchanged">
+    </div>
+    <div class="mb-3">
+      <label for="position" class="form-label">Position / Role</label>
+      <input type="text" id="position" name="position" class="form-control" value="{{ .User.Position }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="department_id" class="form-label">Department</label>
+      <select id="department_id" name="department_id" class="form-select" required>
+        {{range .Departments}}
+          <option value="{{.ID}}" {{ if eq .ID $.User.DepartmentID }}selected{{ end }}>{{.Name}}</option>
+        {{end}}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="/users" class="btn btn-secondary ms-2">Cancel</a>
+  </form>
+</div>
+{{ end }}

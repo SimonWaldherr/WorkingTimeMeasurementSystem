@@ -3,25 +3,23 @@
 <div class="container py-4">
   <h2 class="mb-4">Button Clock</h2>
   <form method="post" action="/clockButton" class="row g-3" autocomplete="off">
-    <div class="col-md-4">
+    <div class="col-md-6">
       <label for="email" class="form-label">Email</label>
       <input type="email" class="form-control" id="email" name="email" required>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-6">
       <label for="password" class="form-label">Password</label>
       <input type="password" class="form-control" id="password" name="password" required>
     </div>
-    <div class="col-md-4">
-      <label for="activity_id" class="form-label">Activity</label>
-      <select class="form-select" id="activity_id" name="activity_id" required>
+    <div class="col-12">
+      <div class="d-flex flex-wrap gap-2">
         {{ range .Activities }}
-        <option value="{{ .ID }}">{{ .Status }}</option>
+          <button type="submit" name="activity_id" value="{{ .ID }}" class="btn btn-outline-primary">{{ .Status }}</button>
         {{ end }}
-      </select>
+      </div>
     </div>
     <div class="col-12">
-      <button type="submit" class="btn btn-primary">Clock</button>
-      <a href="/" class="btn btn-secondary ms-2">Home</a>
+      <a href="/" class="btn btn-secondary">Home</a>
     </div>
   </form>
 </div>

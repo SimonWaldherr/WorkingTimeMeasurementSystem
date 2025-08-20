@@ -1,0 +1,30 @@
+{{ define "title" }}Users (Admin){{ end }}
+{{ define "content" }}
+<div class="container py-4">
+  <h2 class="mb-3">Users</h2>
+  <div class="table-responsive">
+    <table class="table table-striped">
+      <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Dept</th><th></th></tr></thead>
+      <tbody>
+        {{ range .Users }}
+        <tr>
+          <td>{{ .ID }}</td>
+          <td>{{ .Name }}</td>
+          <td>{{ .Email }}</td>
+          <td>{{ .DepartmentID }}</td>
+          <td>
+            <form action="/editUser" method="get" class="d-inline">
+              <input type="hidden" name="id" value="{{ .ID }}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary">Edit</button>
+            </form>
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  <a href="/" class="btn btn-secondary">Home</a>
+  <a href="/addUser" class="btn btn-primary ms-2">Add User</a>
+  <a href="/entries" class="btn btn-outline-primary ms-2">Entries</a>
+ </div>
+{{ end }}

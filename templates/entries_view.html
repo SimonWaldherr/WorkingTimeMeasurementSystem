@@ -1,51 +1,67 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Entries View</title>
-</head>
-<body>
-<h1>Einträge</h1>
-<table border="1">
-    <tr>
-        <th>ID</th><th>User</th><th>Aktivität</th><th>Start</th><th>Ende</th><th>Aktion</th>
-    </tr>
-    {{range .Entries}}
-    <tr>
-        <td>{{.ID}}</td>
-        <td>{{.UserName}}</td>
-        <td>{{.Activity}}</td>
-        <td>{{.Start}}</td>
-        <td>{{.End}}</td>
-        <td>
-            <form action="/entries_view" method="post" style="display:inline;">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <input type="hidden" name="user" value="{{.UserID}}">
-                <input type="hidden" name="activity" value="{{.Activity}}">
-                <input type="hidden" name="start" value="{{.Start}}">
-                <input type="hidden" name="end" value="{{.End}}">
-                <input type="submit" value="Bearbeiten">
-            </form>
-        </td>
-    </tr>
-    {{end}}
-</table>
+{{ define "title" }}Entries (Admin){{ end }}
+{{ define "content" }}
+<div class="container py-4">
+    <h2 class="mb-3">Entries (last 20, page {{.Page}})</h2>
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr><th>ID</th><th>User</th><th>Activity</th><th>Date</th><th></th></tr>
+            </thead>
+            <tbody>
+                {{ range .Entries }}
+                <tr>
+                    <td>{{ .ID }}</td>
+                    <td>{{ .UserName }}</td>
+                    <td>{{ .Activity }}</td>
+                    <td>{{ .Date }}</td>
+                    <td>
+                        <form action="/entries" method="post" class="d-inline">
+                            <input type="hidden" name="id" value="{{ .ID }}">
+                            <input type="hidden" name="user" value="{{ .UserID }}">
+                            <input type="hidden" name="activity" value="{{ .ActivityID }}">
+                            <input type="hidden" name="date" value="{{ .Date }}">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Edit</button>
+                        </form>
+                    </td>
+                </tr>
+                {{ end }}
+            </tbody>
+        </table>
+    </div>
 
-<h2>Neuer/Ändern Eintrag</h2>
-<form action="/entries_view" method="post">
-    <input type="hidden" name="id" value="">
-    User:
-    <select name="user">
-        {{range .Users}}<option value="{{.}}">{{.}}</option>{{end}}
-    </select>
-    Aktivität:
-    <select name="activity">
-        {{range .Activities}}<option value="{{.}}">{{.}}</option>{{end}}
-    </select>
-    Start:
-    <input type="text" name="start" placeholder="DD.MM.YYYY HH:MM[:SS]">
-    Ende:
-    <input type="text" name="end" placeholder="DD.MM.YYYY HH:MM[:SS]">
-    <input type="submit" value="Speichern">
-</form>
-</body>
-</html>
+    <nav>
+        <ul class="pagination">
+            <li class="page-item"><a class="page-link" href="/entries?page={{ add .Page -1 }}">Prev</a></li>
+            <li class="page-item"><a class="page-link" href="/entries?page={{ add .Page 1 }}">Next</a></li>
+        </ul>
+    </nav>
+
+    <hr>
+    <h4>Create / Update Entry</h4>
+    <form action="/entries" method="post" class="row g-2">
+        <div class="col-12">
+            <input type="hidden" name="id" value="">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">User</label>
+            <select name="user" class="form-select">
+                {{ range .Users }}<option value="{{ .ID }}">{{ .Name }}</option>{{ end }}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Activity</label>
+            <select name="activity" class="form-select">
+                {{ range .Activities }}<option value="{{ .ID }}">{{ .Status }}</option>{{ end }}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Date</label>
+            <input type="text" name="date" class="form-control" placeholder="DD.MM.YYYY HH:MM[:SS]">
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a href="/" class="btn btn-secondary ms-2">Home</a>
+        </div>
+    </form>
+</div>
+{{ end }}

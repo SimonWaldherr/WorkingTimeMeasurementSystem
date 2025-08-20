@@ -15,6 +15,7 @@ var base *template.Template
 
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
+	"add": func(a, b int) int { return a + b },
 		"isMultiTenant": func() bool {
 			return getConfig().Features.MultiTenant
 		},

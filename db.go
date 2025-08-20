@@ -14,6 +14,7 @@ import (
 	_ "github.com/denisenkom/go-mssqldb"
 	_ "github.com/mattn/go-sqlite3"
 	_ "github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
 )
 
 //---------------------------------------------------------------------
@@ -158,6 +159,7 @@ func createDatabaseAndTables() {
 		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
 			execBatches(embeddedSQLiteTenantSchema, ";\n")
 		}
+	ensurePasswordColumnExists()
 	case "mssql":
 		if os.Getenv("DB_AUTO_MIGRATE") == "1" {
 			//execBatches(embeddedMSSQLSchema, "\nGO")
@@ -165,11 +167,13 @@ func createDatabaseAndTables() {
 		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
 			execBatches(embeddedMSSQLTenantSchema, "\nGO")
 		}
+	ensurePasswordColumnExists()
 	case "mariadb", "mysql":
 		execBatches(embeddedMariaDBSchema, ";\n")
 		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
 			execBatches(embeddedMariaDBTenantSchema, ";\n")
 		}
+	ensurePasswordColumnExists()
 	}
 }
 
@@ -427,6 +431,158 @@ func getUserIDByEmail(email string) (string, error) {
 		return "", err
 	}
 	return id, nil
+}
+
+func getHashedPasswordByEmail(email string) (string, error) {
+	db := getDB()
+	defer db.Close()
+	query := adaptQuery(fmt.Sprintf("SELECT password FROM %s WHERE email=@eml", tbl("users")))
+	var hash sql.NullString
+	if err := db.QueryRow(query, sql.Named("eml", email)).Scan(&hash); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	if !hash.Valid {
+		return "", nil
+	}
+	return hash.String, nil
+}
+
+// checkUserPasswordByEmail returns (matched, exists, error)
+func checkUserPasswordByEmail(email, clear string) (bool, bool, error) {
+	hash, err := getHashedPasswordByEmail(email)
+	if err != nil {
+		return false, false, err
+	}
+	if strings.TrimSpace(hash) == "" {
+		return false, false, nil
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(clear)); err != nil {
+		return false, true, nil
+	}
+	return true, true, nil
+}
+
+func getEntryByID(id int) (EntryRow, error) {
+	db := getDB()
+	defer db.Close()
+	var r EntryRow
+	q := fmt.Sprintf("SELECT e.id, e.user_id, u.name, e.type_id, t.status, e.date FROM %s e JOIN %s u ON u.id = e.user_id JOIN %s t ON t.id = e.type_id WHERE e.id=@id", tbl("entries"), tbl("users"), tbl("type"))
+	err := db.QueryRow(adaptQuery(q), sql.Named("id", id)).Scan(&r.ID, &r.UserID, &r.UserName, &r.ActivityID, &r.Activity, &r.Date)
+	return r, err
+}
+
+// ensurePasswordColumnExists tries to add users.password column across backends (idempotent)
+func ensurePasswordColumnExists() {
+	db := getDB()
+	defer db.Close()
+
+	switch dbBackend {
+	case "sqlite":
+		// SQLite: no IF NOT EXISTS for columns; will error if exists -> ignore
+		if _, err := db.Exec("ALTER TABLE users ADD COLUMN password TEXT"); err != nil {
+			log.Printf("password column (sqlite) add ignored/failed: %v", err)
+		}
+	case "mssql":
+		stmt := fmt.Sprintf("IF COL_LENGTH('%s','password') IS NULL ALTER TABLE %s ADD password NVARCHAR(255) NULL", tbl("users"), tbl("users"))
+		if _, err := db.Exec(stmt); err != nil {
+			log.Printf("password column (mssql) ensure failed: %v", err)
+		}
+	case "mariadb", "mysql":
+		if _, err := db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR(255) NULL"); err != nil {
+			// Some MySQL versions before 8.0 don't support IF NOT EXISTS for columns
+			if _, err2 := db.Exec("ALTER TABLE users ADD COLUMN password VARCHAR(255) NULL"); err2 != nil {
+				log.Printf("password column (mysql) add ignored/failed: %v", err2)
+			}
+		}
+	}
+}
+
+func hashPassword(clear string) (string, error) {
+	b, err := bcrypt.GenerateFromPassword([]byte(clear), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func setUserPasswordByEmail(email, clear string) error {
+	if strings.TrimSpace(clear) == "" {
+		return nil
+	}
+	hashed, err := hashPassword(clear)
+	if err != nil {
+		return err
+	}
+	db := getDB()
+	defer db.Close()
+	q := adaptQuery("UPDATE "+tbl("users")+" SET password=@pw WHERE email=@eml")
+	_, err = db.Exec(q, sql.Named("pw", hashed), sql.Named("eml", email))
+	return err
+}
+
+// Entries pagination and admin helpers
+type EntryRow struct {
+	ID         int
+	UserID     int
+	UserName   string
+	ActivityID int
+	Activity   string
+	Date       time.Time
+}
+
+func getEntriesPaged(limit, offset int) ([]EntryRow, error) {
+	db := getDB()
+	defer db.Close()
+
+	var (
+		query string
+		rows  *sql.Rows
+		err   error
+	)
+
+	base := fmt.Sprintf("SELECT e.id, e.user_id, u.name, e.type_id, t.status, e.date FROM %s e JOIN %s u ON u.id = e.user_id JOIN %s t ON t.id = e.type_id", tbl("entries"), tbl("users"), tbl("type"))
+	switch dbBackend {
+	case "mssql":
+		// OFFSET/FETCH requires ORDER BY
+		query = base + " ORDER BY e.date DESC OFFSET @off ROWS FETCH NEXT @lim ROWS ONLY"
+		rows, err = db.Query(query, sql.Named("off", offset), sql.Named("lim", limit))
+	default: // sqlite, mariadb/mysql
+		query = base + " ORDER BY e.date DESC LIMIT @lim OFFSET @off"
+		rows, err = db.Query(adaptQuery(query), sql.Named("lim", limit), sql.Named("off", offset))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []EntryRow
+	for rows.Next() {
+		var r EntryRow
+		if err := rows.Scan(&r.ID, &r.UserID, &r.UserName, &r.ActivityID, &r.Activity, &r.Date); err != nil {
+			return nil, err
+		}
+		list = append(list, r)
+	}
+	return list, nil
+}
+
+func updateEntryAdmin(id int, userID int, activityID int, date time.Time) error {
+	db := getDB()
+	defer db.Close()
+	q := adaptQuery("UPDATE "+tbl("entries")+" SET user_id=@uid, type_id=@aid, date=@dt WHERE id=@id")
+	_, err := db.Exec(q, sql.Named("uid", userID), sql.Named("aid", activityID), sql.Named("dt", date), sql.Named("id", id))
+	return err
+}
+
+func createEntryAdmin(userID int, activityID int, date time.Time) error {
+	db := getDB()
+	defer db.Close()
+	q := adaptQuery("INSERT INTO "+tbl("entries")+" (user_id, type_id, date) VALUES (@uid, @aid, @dt)")
+	_, err := db.Exec(q, sql.Named("uid", userID), sql.Named("aid", activityID), sql.Named("dt", date))
+	return err
 }
 
 // ----------- INSERT --------------------------------------------------

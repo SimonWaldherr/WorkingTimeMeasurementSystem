@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,6 +105,34 @@ func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Hand
 	})
 }
 
+func adminOnlyMiddleware(users map[string]AuthUser, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, _ := store.Get(r, "session")
+		username, _ := session.Values["username"].(string)
+		role, _ := session.Values["role"].(string)
+		if username == "" {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		user, exists := users[username]
+		if !exists {
+			session.Options.MaxAge = -1
+			session.Save(r, w)
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		// prefer session role, fallback to CSV
+		if role == "" {
+			role = user.Role
+		}
+		if strings.ToLower(role) != "admin" {
+			renderForbidden(w, fmt.Errorf("admin only"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func unauthorized(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -165,11 +194,16 @@ func main() {
 
 	// protected actions
 	mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
-	mux.Handle("/editUser", basicAuthMiddleware(users, http.HandlerFunc(editUserHandler)))
+	mux.Handle("/editUser", adminOnlyMiddleware(users, http.HandlerFunc(editUserHandler)))
 	mux.Handle("/createActivity", basicAuthMiddleware(users, http.HandlerFunc(createActivityHandler)))
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
 	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
 	mux.Handle("/work_status", basicAuthMiddleware(users, http.HandlerFunc(workStatusHandler)))
+
+	// admin entries view/edit
+	mux.Handle("/entries", adminOnlyMiddleware(users, http.HandlerFunc(entriesAdminHandler)))
+	// admin users view
+	mux.Handle("/users", adminOnlyMiddleware(users, http.HandlerFunc(usersAdminHandler)))
 
 	// barcodes page (if enabled)
 	if config.Features.BarcodeScanning {
@@ -257,6 +291,8 @@ func loginHandler(users map[string]AuthUser) http.HandlerFunc {
 		}
 		session, _ := store.Get(r, "session")
 		session.Values["username"] = user.Username
+	// store role as well for admin checks
+	session.Values["role"] = user.Role
 	// reuse global store options already set
 		session.Save(r, w)
 		http.Redirect(w, r, "/", http.StatusFound)
@@ -329,8 +365,23 @@ func editUserHandler(w http.ResponseWriter, r *http.Request) {
 			r.FormValue("position"),
 			r.FormValue("department_id"),
 		)
+		if pw := strings.TrimSpace(r.FormValue("password")); pw != "" {
+			if err := setUserPasswordByEmail(r.FormValue("email"), pw); err != nil {
+				log.Printf("failed to update user password: %v", err)
+			}
+		}
 	}
 	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
+}
+
+// usersAdminHandler lists users with edit links (admin only)
+func usersAdminHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	users := getAllUsers()
+	renderTemplate(w, "users_admin", struct{ Users []User }{users})
 }
 
 // addActivityHandler shows the add-activity page
@@ -357,8 +408,80 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 			r.FormValue("position"),
 			r.FormValue("department_id"),
 		)
+		// set password if provided
+		if pw := strings.TrimSpace(r.FormValue("password")); pw != "" {
+			if err := setUserPasswordByEmail(r.FormValue("email"), pw); err != nil {
+				log.Printf("failed to set user password: %v", err)
+			}
+		}
 	}
 	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
+}
+
+// entriesAdminHandler shows last 20 entries and allows edit/create (admin only)
+func entriesAdminHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		pageStr := r.URL.Query().Get("page")
+		page := 1
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+		limit := 20
+		offset := (page - 1) * limit
+		entries, err := getEntriesPaged(limit, offset)
+		if err != nil {
+			renderInternalServerError(w, err)
+			return
+		}
+		// prepare users/activities list
+		users := getAllUsers()
+		activities := getAllActivities()
+		data := struct {
+			Entries    []EntryRow
+			Users      []User
+			Activities []Activity
+			Page       int
+		}{entries, users, activities, page}
+		renderTemplate(w, "entries_view", data)
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			renderBadRequest(w, err)
+			return
+		}
+		idStr := strings.TrimSpace(r.FormValue("id"))
+		userID, _ := strconv.Atoi(r.FormValue("user"))
+		activityID, _ := strconv.Atoi(r.FormValue("activity"))
+		dateStr := r.FormValue("date")
+		// support multiple common layouts
+		var dt time.Time
+		var err error
+		for _, layout := range []string{timeLayout, time.RFC3339, "2006-01-02 15:04", "02.01.2006 15:04"} {
+			dt, err = time.ParseInLocation(layout, dateStr, time.Local)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			renderBadRequest(w, fmt.Errorf("invalid date format"))
+			return
+		}
+		if idStr == "" {
+			if err := createEntryAdmin(userID, activityID, dt); err != nil {
+				renderInternalServerError(w, err)
+				return
+			}
+		} else {
+			id, _ := strconv.Atoi(idStr)
+			if err := updateEntryAdmin(id, userID, activityID, dt); err != nil {
+				renderInternalServerError(w, err)
+				return
+			}
+		}
+		http.Redirect(w, r, "/entries", http.StatusSeeOther)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func barcodesHandler(w http.ResponseWriter, r *http.Request) {
@@ -550,22 +673,32 @@ func clockButtonHandler(w http.ResponseWriter, r *http.Request) {
 			renderBadRequest(w, fmt.Errorf("missing fields"))
 			return
 		}
-		// verify against CSV demo auth
-		users, err := loadCredentials("credentials.csv")
-		if err != nil {
+		// Prefer DB-stored password if available, else fall back to CSV
+		if ok, exists, err := checkUserPasswordByEmail(email, password); err != nil {
 			renderInternalServerError(w, err)
 			return
-		}
-		var matched bool
-		for _, u := range users {
-			if strings.EqualFold(u.Username, email) && u.Password == password {
-				matched = true
-				break
+		} else if !ok {
+			if exists {
+				renderUnauthorized(w, fmt.Errorf("invalid credentials"))
+				return
 			}
-		}
-		if !matched {
-			renderUnauthorized(w, fmt.Errorf("invalid credentials"))
-			return
+			// fall back to CSV
+			users, err := loadCredentials("credentials.csv")
+			if err != nil {
+				renderInternalServerError(w, err)
+				return
+			}
+			var matched bool
+			for _, u := range users {
+				if strings.EqualFold(u.Username, email) && u.Password == password {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				renderUnauthorized(w, fmt.Errorf("invalid credentials"))
+				return
+			}
 		}
 		uid, err := getUserIDByEmail(email)
 		if err != nil || uid == "" {
