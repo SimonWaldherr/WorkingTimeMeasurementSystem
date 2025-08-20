@@ -13,13 +13,13 @@
                     <td>{{ .ID }}</td>
                     <td>{{ .UserName }}</td>
                     <td>{{ .Activity }}</td>
-                    <td>{{ .Date }}</td>
+                    <td>{{ .Date.Format "2006-01-02 15:04:05" }}</td>
                     <td>
                         <form action="/entries" method="post" class="d-inline">
                             <input type="hidden" name="id" value="{{ .ID }}">
                             <input type="hidden" name="user" value="{{ .UserID }}">
                             <input type="hidden" name="activity" value="{{ .ActivityID }}">
-                            <input type="hidden" name="date" value="{{ .Date }}">
+                            <input type="hidden" name="date" value="{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}">
                             <button type="submit" class="btn btn-sm btn-outline-secondary">Edit</button>
                         </form>
                     </td>

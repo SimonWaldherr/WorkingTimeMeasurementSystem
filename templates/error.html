@@ -1,0 +1,11 @@
+{{ define "title" }}Error {{ .Status }}{{ end }}
+{{ define "content" }}
+<div class="container py-5">
+  <div class="alert alert-danger" role="alert">
+    <h4 class="alert-heading">Error {{ .Status }}</h4>
+    <p>{{ .Message }}</p>
+    <hr>
+    <a href="/" class="btn btn-primary">Home</a>
+  </div>
+</div>
+{{ end }}

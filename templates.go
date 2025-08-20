@@ -15,7 +15,7 @@ var base *template.Template
 
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-	"add": func(a, b int) int { return a + b },
+		"add": func(a, b int) int { return a + b },
 		"isMultiTenant": func() bool {
 			return getConfig().Features.MultiTenant
 		},
@@ -145,13 +145,31 @@ func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
 }
 
 func renderError(w http.ResponseWriter, status int, message string) {
-	w.WriteHeader(status)
+	// Always set headers before writing status
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	data := map[string]interface{}{
 		"Status":  status,
 		"Message": message,
 	}
-	if err := base.ExecuteTemplate(w, "base", data); err != nil {
+	// Clone the base template to avoid executing the shared instance
+	tmpl, err := base.Clone()
+	if err != nil {
+		http.Error(w, "template clone error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Parse an error page that defines title/content blocks
+	pageFile := path.Join("templates", "error.html")
+	if info, err2 := os.Stat("templates"); err2 == nil && info.IsDir() {
+		tmpl, err = tmpl.ParseFiles(pageFile)
+	} else {
+		tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
+	}
+	if err != nil {
+		http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
 	}
 }

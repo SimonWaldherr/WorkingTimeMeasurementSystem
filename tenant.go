@@ -12,12 +12,12 @@ import (
 
 // Tenant represents a client/organization in the multi-tenant system
 type Tenant struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
 	Subdomain string `json:"subdomain"`
-	Domain   string `json:"domain"`
-	Active   bool   `json:"active"`
-	Config   string `json:"config"` // JSON config for tenant-specific settings
+	Domain    string `json:"domain"`
+	Active    bool   `json:"active"`
+	Config    string `json:"config"` // JSON config for tenant-specific settings
 }
 
 // TenantContext holds tenant information for request context
@@ -44,7 +44,7 @@ func getTenantFromHost(host string) (*Tenant, error) {
 	}
 
 	subdomain := parts[0]
-	
+
 	// Skip 'www' subdomain
 	if subdomain == "www" && len(parts) > 2 {
 		subdomain = parts[1]
@@ -64,7 +64,7 @@ func getTenantBySubdomain(subdomain string) (*Tenant, error) {
 	defer db.Close()
 
 	query := fmt.Sprintf("SELECT id, name, subdomain, domain, active, config FROM %s WHERE subdomain = ? AND active = 1", tbl("tenants"))
-	
+
 	var tenant Tenant
 	err := db.QueryRow(query, subdomain).Scan(
 		&tenant.ID,
@@ -74,7 +74,7 @@ func getTenantBySubdomain(subdomain string) (*Tenant, error) {
 		&tenant.Active,
 		&tenant.Config,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrTenantNotFound

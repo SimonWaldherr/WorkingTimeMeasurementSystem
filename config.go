@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -18,11 +18,11 @@ type Config struct {
 }
 
 type DatabaseConfig struct {
-	Backend  string `json:"backend"`  // sqlite, mssql, mariadb
-	SQLite   SQLiteConfig `json:"sqlite"`
-	MSSQL    MSSQLConfig  `json:"mssql"`
-	MariaDB  MariaDBConfig `json:"mariadb"`
-	AutoMigrate bool `json:"auto_migrate"`
+	Backend     string        `json:"backend"` // sqlite, mssql, mariadb
+	SQLite      SQLiteConfig  `json:"sqlite"`
+	MSSQL       MSSQLConfig   `json:"mssql"`
+	MariaDB     MariaDBConfig `json:"mariadb"`
+	AutoMigrate bool          `json:"auto_migrate"`
 }
 
 type SQLiteConfig struct {
@@ -62,11 +62,11 @@ type SecurityConfig struct {
 }
 
 type FeatureConfig struct {
-	MultiTenant    bool `json:"multi_tenant"`
-	BarcodeScanning bool `json:"barcode_scanning"`
-	Reporting      bool `json:"reporting"`
-	EmailNotifications bool `json:"email_notifications"`
-	ClockMode      string `json:"clock_mode"` // input | button | both
+	MultiTenant        bool   `json:"multi_tenant"`
+	BarcodeScanning    bool   `json:"barcode_scanning"`
+	Reporting          bool   `json:"reporting"`
+	EmailNotifications bool   `json:"email_notifications"`
+	ClockMode          string `json:"clock_mode"` // input | button | both
 }
 
 var appConfig *Config
@@ -205,7 +205,7 @@ func saveConfig() error {
 // validateConfig validates the configuration
 func validateConfig() error {
 	config := getConfig()
-	
+
 	// Validate database configuration
 	switch strings.ToLower(config.Database.Backend) {
 	case "sqlite", "mssql", "mariadb", "mysql":
@@ -213,16 +213,16 @@ func validateConfig() error {
 	default:
 		return fmt.Errorf("invalid database backend: %s", config.Database.Backend)
 	}
-	
+
 	// Validate server configuration
 	if config.Server.Port <= 0 || config.Server.Port > 65535 {
 		return fmt.Errorf("invalid server port: %d", config.Server.Port)
 	}
-	
+
 	// Validate security configuration
 	if len(config.Security.SessionSecret) < 32 {
 		log.Printf("Warning: Session secret should be at least 32 characters long")
 	}
-	
+
 	return nil
 }

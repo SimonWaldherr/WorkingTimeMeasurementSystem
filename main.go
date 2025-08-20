@@ -153,7 +153,7 @@ func init() {
 
 func main() {
 	config := getConfig()
-	
+
 	// load auth users
 	users, err := loadCredentials("credentials.csv")
 	if err != nil {
@@ -182,7 +182,7 @@ func main() {
 	} else {
 		mux.Handle("/", http.HandlerFunc(indexHandler))
 	}
-	
+
 	mux.Handle("/addUser", basicAuthMiddleware(users, http.HandlerFunc(addUserHandler)))
 	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
 	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
@@ -227,7 +227,7 @@ func main() {
 	log.Printf("Starting server on %s…", serverAddr)
 	log.Printf("Multi-tenant mode: %v", config.Features.MultiTenant)
 	log.Printf("Database backend: %s", config.Database.Backend)
-	
+
 	server := &http.Server{
 		Addr:           serverAddr,
 		Handler:        handler,
@@ -236,7 +236,7 @@ func main() {
 		IdleTimeout:    time.Duration(config.Server.IdleTimeout) * time.Second,
 		MaxHeaderBytes: config.Server.MaxHeaderBytes,
 	}
-	
+
 	log.Fatal(server.ListenAndServe())
 }
 
@@ -244,7 +244,7 @@ func main() {
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	var users []User
 	var activities []Activity
-	
+
 	config := getConfig()
 	if config.Features.MultiTenant {
 		tenantCtx, err := getTenantFromContext(r.Context())
@@ -252,17 +252,17 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Tenant context required", http.StatusBadRequest)
 			return
 		}
-		
+
 		service := NewWorkingTimeService()
 		defer service.Close()
-		
+
 		users, _ = service.GetUsersForTenant(r.Context(), tenantCtx.TenantID)
 		activities, _ = service.GetActivitiesForTenant(r.Context(), tenantCtx.TenantID)
 	} else {
 		users = getUsers()
 		activities = getActivities()
 	}
-	
+
 	data := struct {
 		Users      []User
 		Activities []Activity
@@ -291,9 +291,9 @@ func loginHandler(users map[string]AuthUser) http.HandlerFunc {
 		}
 		session, _ := store.Get(r, "session")
 		session.Values["username"] = user.Username
-	// store role as well for admin checks
-	session.Values["role"] = user.Role
-	// reuse global store options already set
+		// store role as well for admin checks
+		session.Values["role"] = user.Role
+		// reuse global store options already set
 		session.Save(r, w)
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
@@ -453,10 +453,10 @@ func entriesAdminHandler(w http.ResponseWriter, r *http.Request) {
 		userID, _ := strconv.Atoi(r.FormValue("user"))
 		activityID, _ := strconv.Atoi(r.FormValue("activity"))
 		dateStr := r.FormValue("date")
-		// support multiple common layouts
+		// support multiple common layouts (prefer RFC3339 if provided by hidden fields)
 		var dt time.Time
 		var err error
-		for _, layout := range []string{timeLayout, time.RFC3339, "2006-01-02 15:04", "02.01.2006 15:04"} {
+		for _, layout := range []string{time.RFC3339, timeLayout, "2006-01-02 15:04:05", "2006-01-02 15:04", "02.01.2006 15:04"} {
 			dt, err = time.ParseInLocation(layout, dateStr, time.Local)
 			if err == nil {
 				break

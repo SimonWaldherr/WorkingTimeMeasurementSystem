@@ -30,7 +30,7 @@ func (s *WorkingTimeService) Close() error {
 func (s *WorkingTimeService) GetUsersForTenant(ctx context.Context, tenantID int) ([]User, error) {
 	query := fmt.Sprintf(`SELECT id, name, email, position, department_id, stampkey, tenant_id 
 						 FROM %s WHERE tenant_id = ?`, tbl("users"))
-	
+
 	rows, err := s.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func (s *WorkingTimeService) GetUsersForTenant(ctx context.Context, tenantID int
 func (s *WorkingTimeService) GetActivitiesForTenant(ctx context.Context, tenantID int) ([]Activity, error) {
 	query := fmt.Sprintf(`SELECT id, status, work, comment, tenant_id 
 						 FROM %s WHERE tenant_id = ?`, tbl("type"))
-	
+
 	rows, err := s.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (s *WorkingTimeService) GetActivitiesForTenant(ctx context.Context, tenantI
 func (s *WorkingTimeService) GetDepartmentsForTenant(ctx context.Context, tenantID int) ([]Department, error) {
 	query := fmt.Sprintf(`SELECT id, name, tenant_id 
 						 FROM %s WHERE tenant_id = ?`, tbl("departments"))
-	
+
 	rows, err := s.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (s *WorkingTimeService) CreateUserForTenant(ctx context.Context, tenantID i
 
 	query := fmt.Sprintf(`INSERT INTO %s (name, stampkey, email, position, department_id, tenant_id)
 						 VALUES (?, ?, ?, ?, ?, ?)`, tbl("users"))
-	
+
 	_, err := s.db.ExecContext(ctx, query, name, stampkey, email, position, departmentID, tenantID)
 	return err
 }
@@ -117,7 +117,7 @@ func (s *WorkingTimeService) CreateUserForTenant(ctx context.Context, tenantID i
 func (s *WorkingTimeService) CreateActivityForTenant(ctx context.Context, tenantID int, status, comment string, work int) error {
 	query := fmt.Sprintf(`INSERT INTO %s (status, work, comment, tenant_id)
 						 VALUES (?, ?, ?, ?)`, tbl("type"))
-	
+
 	_, err := s.db.ExecContext(ctx, query, status, work, comment, tenantID)
 	return err
 }
@@ -125,7 +125,7 @@ func (s *WorkingTimeService) CreateActivityForTenant(ctx context.Context, tenant
 // createDepartmentForTenant creates a new department for a specific tenant
 func (s *WorkingTimeService) CreateDepartmentForTenant(ctx context.Context, tenantID int, name string) error {
 	query := fmt.Sprintf(`INSERT INTO %s (name, tenant_id) VALUES (?, ?)`, tbl("departments"))
-	
+
 	_, err := s.db.ExecContext(ctx, query, name, tenantID)
 	return err
 }
@@ -134,7 +134,7 @@ func (s *WorkingTimeService) CreateDepartmentForTenant(ctx context.Context, tena
 func (s *WorkingTimeService) CreateEntryForTenant(ctx context.Context, tenantID int, userID, activityID string, entryDate time.Time) error {
 	query := fmt.Sprintf(`INSERT INTO %s (user_id, type_id, date, tenant_id)
 						 VALUES (?, ?, ?, ?)`, tbl("entries"))
-	
+
 	_, err := s.db.ExecContext(ctx, query, userID, activityID, entryDate, tenantID)
 	return err
 }
@@ -143,14 +143,14 @@ func (s *WorkingTimeService) CreateEntryForTenant(ctx context.Context, tenantID 
 func (s *WorkingTimeService) createUniqueStampKey(ctx context.Context, tenantID int) int {
 	for {
 		stampKey := time.Now().UnixNano()%900000000000 + 100000000000 // 12-digit
-		
+
 		query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE stampkey = ? AND tenant_id = ?`, tbl("users"))
 		var count int
 		if err := s.db.QueryRowContext(ctx, query, stampKey, tenantID).Scan(&count); err != nil {
 			log.Printf("Error checking stampkey uniqueness: %v", err)
 			continue
 		}
-		
+
 		if count == 0 {
 			return int(stampKey)
 		}
@@ -185,7 +185,7 @@ func (s *WorkingTimeService) GetWorkHoursDataForTenant(ctx context.Context, tena
 		SELECT user_name, work_date, work_hours 
 		FROM %s 
 		WHERE tenant_id = ?`, tbl("work_hours"))
-	
+
 	rows, err := s.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		log.Printf("Query work_hours failed: %v", err)
@@ -211,7 +211,7 @@ func (s *WorkingTimeService) GetCurrentStatusDataForTenant(ctx context.Context, 
 		SELECT user_name, status, date 
 		FROM %s 
 		WHERE tenant_id = ?`, tbl("current_status"))
-	
+
 	rows, err := s.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		log.Printf("Query current_status failed: %v", err)

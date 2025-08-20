@@ -4,16 +4,16 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
-	"regexp"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	_ "github.com/mattn/go-sqlite3"
 	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -44,14 +44,14 @@ var embeddedMariaDBTenantSchema string
 //---------------------------------------------------------------------
 
 var (
-	dbBackend            string // "sqlite" | "mssql"
-	sqlitePath           string
-	mssqlServer, mssqlDB string
-	mssqlUser, mssqlPass string
-	mssqlPort            int
-	mariadbHost, mariadbDB string
+	dbBackend                string // "sqlite" | "mssql"
+	sqlitePath               string
+	mssqlServer, mssqlDB     string
+	mssqlUser, mssqlPass     string
+	mssqlPort                int
+	mariadbHost, mariadbDB   string
 	mariadbUser, mariadbPass string
-	mariadbPort            int
+	mariadbPort              int
 )
 
 // Hilfsfunktionen
@@ -159,7 +159,7 @@ func createDatabaseAndTables() {
 		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
 			execBatches(embeddedSQLiteTenantSchema, ";\n")
 		}
-	ensurePasswordColumnExists()
+		ensurePasswordColumnExists()
 	case "mssql":
 		if os.Getenv("DB_AUTO_MIGRATE") == "1" {
 			//execBatches(embeddedMSSQLSchema, "\nGO")
@@ -167,13 +167,13 @@ func createDatabaseAndTables() {
 		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
 			execBatches(embeddedMSSQLTenantSchema, "\nGO")
 		}
-	ensurePasswordColumnExists()
+		ensurePasswordColumnExists()
 	case "mariadb", "mysql":
 		execBatches(embeddedMariaDBSchema, ";\n")
 		if getConfig().Features.MultiTenant && getConfig().Database.AutoMigrate {
 			execBatches(embeddedMariaDBTenantSchema, ";\n")
 		}
-	ensurePasswordColumnExists()
+		ensurePasswordColumnExists()
 	}
 }
 
@@ -200,6 +200,51 @@ func adaptQuery(q string) string {
 		return namedParamRegex.ReplaceAllString(q, "?")
 	}
 	return q
+}
+
+// coerceToTime tries to convert a scanned DB value into time.Time.
+// Some backends (or legacy schemas) may return TEXT/NVARCHAR for date columns.
+func coerceToTime(v any) (time.Time, error) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, nil
+	case []byte:
+		return parseDateString(string(t))
+	case string:
+		return parseDateString(t)
+	case nil:
+		return time.Time{}, fmt.Errorf("nil time value")
+	default:
+		return time.Time{}, fmt.Errorf("unsupported time type %T", v)
+	}
+}
+
+// parseDateString attempts multiple common layouts used across SQLite/MariaDB/MSSQL.
+func parseDateString(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty time string")
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02",
+	}
+	// Try parsing in local time first, then without location.
+	for _, layout := range layouts {
+		if tt, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return tt, nil
+		}
+	}
+	if tt, err := time.Parse(time.ANSIC, s); err == nil {
+		return tt, nil
+	}
+	return time.Time{}, fmt.Errorf("unable to parse time: %q", s)
 }
 
 //---------------------------------------------------------------------
@@ -470,8 +515,16 @@ func getEntryByID(id int) (EntryRow, error) {
 	defer db.Close()
 	var r EntryRow
 	q := fmt.Sprintf("SELECT e.id, e.user_id, u.name, e.type_id, t.status, e.date FROM %s e JOIN %s u ON u.id = e.user_id JOIN %s t ON t.id = e.type_id WHERE e.id=@id", tbl("entries"), tbl("users"), tbl("type"))
-	err := db.QueryRow(adaptQuery(q), sql.Named("id", id)).Scan(&r.ID, &r.UserID, &r.UserName, &r.ActivityID, &r.Activity, &r.Date)
-	return r, err
+	var rawDate any
+	if err := db.QueryRow(adaptQuery(q), sql.Named("id", id)).Scan(&r.ID, &r.UserID, &r.UserName, &r.ActivityID, &r.Activity, &rawDate); err != nil {
+		return r, err
+	}
+	t, err := coerceToTime(rawDate)
+	if err != nil {
+		return r, err
+	}
+	r.Date = t
+	return r, nil
 }
 
 // ensurePasswordColumnExists tries to add users.password column across backends (idempotent)
@@ -518,7 +571,7 @@ func setUserPasswordByEmail(email, clear string) error {
 	}
 	db := getDB()
 	defer db.Close()
-	q := adaptQuery("UPDATE "+tbl("users")+" SET password=@pw WHERE email=@eml")
+	q := adaptQuery("UPDATE " + tbl("users") + " SET password=@pw WHERE email=@eml")
 	_, err = db.Exec(q, sql.Named("pw", hashed), sql.Named("eml", email))
 	return err
 }
@@ -561,9 +614,15 @@ func getEntriesPaged(limit, offset int) ([]EntryRow, error) {
 	var list []EntryRow
 	for rows.Next() {
 		var r EntryRow
-		if err := rows.Scan(&r.ID, &r.UserID, &r.UserName, &r.ActivityID, &r.Activity, &r.Date); err != nil {
+		var rawDate any
+		if err := rows.Scan(&r.ID, &r.UserID, &r.UserName, &r.ActivityID, &r.Activity, &rawDate); err != nil {
 			return nil, err
 		}
+		tt, err := coerceToTime(rawDate)
+		if err != nil {
+			return nil, err
+		}
+		r.Date = tt
 		list = append(list, r)
 	}
 	return list, nil
@@ -572,7 +631,7 @@ func getEntriesPaged(limit, offset int) ([]EntryRow, error) {
 func updateEntryAdmin(id int, userID int, activityID int, date time.Time) error {
 	db := getDB()
 	defer db.Close()
-	q := adaptQuery("UPDATE "+tbl("entries")+" SET user_id=@uid, type_id=@aid, date=@dt WHERE id=@id")
+	q := adaptQuery("UPDATE " + tbl("entries") + " SET user_id=@uid, type_id=@aid, date=@dt WHERE id=@id")
 	_, err := db.Exec(q, sql.Named("uid", userID), sql.Named("aid", activityID), sql.Named("dt", date), sql.Named("id", id))
 	return err
 }
@@ -580,7 +639,7 @@ func updateEntryAdmin(id int, userID int, activityID int, date time.Time) error 
 func createEntryAdmin(userID int, activityID int, date time.Time) error {
 	db := getDB()
 	defer db.Close()
-	q := adaptQuery("INSERT INTO "+tbl("entries")+" (user_id, type_id, date) VALUES (@uid, @aid, @dt)")
+	q := adaptQuery("INSERT INTO " + tbl("entries") + " (user_id, type_id, date) VALUES (@uid, @aid, @dt)")
 	_, err := db.Exec(q, sql.Named("uid", userID), sql.Named("aid", activityID), sql.Named("dt", date))
 	return err
 }
