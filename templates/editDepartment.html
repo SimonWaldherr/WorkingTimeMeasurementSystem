@@ -1,0 +1,141 @@
+{{ define "title" }}Edit Department - Time Tracking System{{ end }}
+
+{{ define "content" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-pencil text-primary"></i> Edit Department
+  </h1>
+  <div>
+    <a href="/addDepartment" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Departments
+    </a>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-diagram-3 text-success"></i> Department Details
+        </h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="/editDepartment">
+          <input type="hidden" name="id" value="{{ .Content.ID }}">
+          
+          <div class="row g-3">
+            <!-- Department Name -->
+            <div class="col-12">
+              <label for="name" class="form-label">Department Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="name" name="name" 
+                     value="{{ .Content.Name }}" required>
+              <div class="form-text">The name of the department (e.g., IT, HR, Sales)</div>
+            </div>
+            
+            <!-- Current Department Info -->
+            <div class="col-12">
+              <div class="alert alert-info">
+                <h6 class="alert-heading">
+                  <i class="bi bi-info-circle"></i> Current Department Information
+                </h6>
+                <div class="row">
+                  <div class="col-md-6">
+                    <strong>ID:</strong><br>
+                    <span class="badge bg-secondary">{{ .Content.ID }}</span>
+                  </div>
+                  <div class="col-md-6">
+                    <strong>Current Name:</strong><br>
+                    <span class="badge bg-primary">{{ .Content.Name }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <hr class="my-4">
+          
+          <div class="d-flex justify-content-between">
+            <a href="/addDepartment" class="btn btn-outline-secondary">
+              <i class="bi bi-x-circle"></i> Cancel
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle"></i> Update Department
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Form validation
+  const form = document.querySelector('form');
+  form.addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value.trim();
+    
+    if (!name) {
+      e.preventDefault();
+      alert('Please enter a department name.');
+      return false;
+    }
+    
+    // Check if name contains only valid characters
+    if (!/^[a-zA-Z0-9\s\-_&]+$/.test(name)) {
+      e.preventDefault();
+      alert('Department name can only contain letters, numbers, spaces, hyphens, underscores, and ampersands.');
+      return false;
+    }
+    
+    // Check minimum length
+    if (name.length < 2) {
+      e.preventDefault();
+      alert('Department name must be at least 2 characters long.');
+      return false;
+    }
+  });
+  
+  // Auto-save draft functionality
+  const nameInput = document.getElementById('name');
+  
+  function saveDraft() {
+    const draft = {
+      name: nameInput.value,
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('departmentEditDraft', JSON.stringify(draft));
+  }
+  
+  // Save draft on input change
+  nameInput.addEventListener('input', saveDraft);
+  
+  // Load draft if exists
+  const savedDraft = localStorage.getItem('departmentEditDraft');
+  if (savedDraft) {
+    try {
+      const draft = JSON.parse(savedDraft);
+      const draftAge = new Date() - new Date(draft.timestamp);
+      
+      // Only load draft if it's less than 1 hour old
+      if (draftAge < 3600000) {
+        if (confirm('A draft of your changes was found. Would you like to load it?')) {
+          nameInput.value = draft.name;
+        }
+      }
+    } catch (e) {
+      // Invalid draft data, ignore
+    }
+  }
+  
+  // Clear draft on successful form submission
+  form.addEventListener('submit', function() {
+    localStorage.removeItem('departmentEditDraft');
+  });
+});
+</script>
+{{ end }}
+
+
+

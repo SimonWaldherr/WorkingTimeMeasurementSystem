@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"html/template"
 	"net/http"
@@ -38,7 +39,40 @@ func init() {
 	}
 }
 
-func renderTemplate(w http.ResponseWriter, page string, data interface{}) {
+// MetaInfo carries auth/role information for templates (header/nav)
+type MetaInfo struct {
+	IsAuthenticated bool
+	IsAdmin         bool
+	Username        string
+	Title           string
+}
+
+// ViewModel wraps page content with meta info; base.html passes .Content as dot to blocks
+type ViewModel struct {
+	Meta    MetaInfo
+	Content interface{}
+}
+
+func buildMeta(r *http.Request, title string) MetaInfo {
+	meta := MetaInfo{Title: title}
+	if r == nil {
+		return meta
+	}
+	session, _ := store.Get(r, "session")
+	if uname, ok := session.Values["username"].(string); ok && uname != "" {
+		meta.IsAuthenticated = true
+		meta.Username = uname
+	}
+	if role, ok := session.Values["role"].(string); ok && role != "" {
+		// treat case-insensitively
+		if role == "admin" || role == "Admin" || role == "ADMIN" {
+			meta.IsAdmin = true
+		}
+	}
+	return meta
+}
+
+func renderTemplate(w http.ResponseWriter, r *http.Request, page string, data interface{}) {
 	// Clone base to avoid polluting it
 	tmpl, err := base.Clone()
 	if err != nil {
@@ -52,7 +86,7 @@ func renderTemplate(w http.ResponseWriter, page string, data interface{}) {
 	// or just attempt to parse from disk first if folder exists,
 	// else parse from embedded FS
 
-	if info, err := os.Stat("templates"); err == nil && info.IsDir() {
+	if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
 		// Parse page template from disk
 		tmpl, err = tmpl.ParseFiles(pageFile)
 	} else {
@@ -65,9 +99,18 @@ func renderTemplate(w http.ResponseWriter, page string, data interface{}) {
 		return
 	}
 
-	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
+	// Ensure Content is never nil to avoid nil deref in templates (e.g., .Content.Error)
+	var content interface{} = data
+	if content == nil {
+		content = map[string]interface{}{}
 	}
+	vm := ViewModel{Meta: buildMeta(r, ""), Content: content}
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "base", vm); err != nil {
+		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, _ = w.Write(buf.Bytes())
 }
 
 // TableData is used to render a generic HTML table
@@ -78,7 +121,7 @@ type TableData struct {
 }
 
 // renderHTMLTable renders a simple HTML table
-func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
+func renderHTMLTable(w http.ResponseWriter, r *http.Request, title string, td TableData) {
 	// Clone base to avoid polluting it
 	tmpl, err := base.Clone()
 	if err != nil {
@@ -88,8 +131,9 @@ func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
 
 	pageFile := path.Join("templates", "table.html")
 	// Check if base was loaded from disk or embed by checking the type of base (optional)
-	if info, err := os.Stat("templates"); err == nil && info.IsDir() {
+	if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
 		// Parse page template from disk
+
 		tmpl, err = tmpl.ParseFiles(pageFile)
 	} else {
 		// Parse page template from embedded FS
@@ -101,19 +145,23 @@ func renderHTMLTable(w http.ResponseWriter, title string, td TableData) {
 		return
 	}
 
-	td.Title = title
-	if err := tmpl.ExecuteTemplate(w, "base", td); err != nil {
+	// Ensure title is available to base/meta
+	vm := ViewModel{Meta: buildMeta(r, title), Content: td}
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "base", vm); err != nil {
 		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
+	_, _ = w.Write(buf.Bytes())
 }
 
 func renderError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
-	data := map[string]interface{}{
+	vm := ViewModel{Meta: MetaInfo{Title: "Error"}, Content: map[string]interface{}{
 		"Status":  status,
 		"Message": message,
-	}
-	if err := base.ExecuteTemplate(w, "base", data); err != nil {
+	}}
+	if err := base.ExecuteTemplate(w, "base", vm); err != nil {
 		http.Error(w, "template execute error: "+err.Error(), http.StatusInternalServerError)
 	}
 }

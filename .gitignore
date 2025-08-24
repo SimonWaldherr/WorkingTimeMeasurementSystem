@@ -1,1 +1,6 @@
 WorkingTime
+wtm
+.bin
+templates.zip
+time_tracking.test.db
+/database/*.db

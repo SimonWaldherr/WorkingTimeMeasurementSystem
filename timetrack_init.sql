@@ -1,16 +1,18 @@
-CREATE TABLE
-IF NOT EXISTS "type"(
+CREATE TABLE IF NOT EXISTS "type" (
 	"id" INTEGER PRIMARY KEY,
 	"status" TEXT UNIQUE NOT NULL,
 	"work" INTEGER NOT NULL,
 	"comment" TEXT
 );
 
+-- Seed default activities (safe if already present)
+INSERT OR IGNORE INTO "type" (id, status, work, comment) VALUES
+	(1, 'Work', 1, 'Working time'),
+	(2, 'Break', 0, 'Pause/Break');
 
-CREATE TABLE
-IF NOT EXISTS "entries"(
+CREATE TABLE IF NOT EXISTS "entries" (
 	"id" INTEGER PRIMARY KEY,
-	"date" DATETIMENOT NULL,
+	"date" DATETIME NOT NULL,
 	"type_id" INTEGER NOT NULL,
 	"user_id" INTEGER NOT NULL,
 	"comment" TEXT,
@@ -18,28 +20,25 @@ IF NOT EXISTS "entries"(
 	FOREIGN KEY("user_id") REFERENCES "users"("id")
 );
 
-
-CREATE TABLE
-IF NOT EXISTS "users"(
+CREATE TABLE IF NOT EXISTS "users" (
 	"id" INTEGER PRIMARY KEY,
 	"stampkey" TEXT NOT NULL,
 	"name" TEXT NOT NULL,
 	"email" TEXT UNIQUE NOT NULL,
+	"password" TEXT,
+	"role" TEXT DEFAULT 'user',
 	"position" TEXT,
 	"department_id" INTEGER,
 	FOREIGN KEY("department_id") REFERENCES "departments"("id")
 );
 
-
-CREATE TABLE
-IF NOT EXISTS "departments"(
+CREATE TABLE IF NOT EXISTS "departments" (
 	"id" INTEGER PRIMARY KEY,
 	"name" TEXT UNIQUE NOT NULL
 );
 
-
-CREATE VIEW
-IF NOT EXISTS "work_hours" AS WITH work_intervals AS(
+CREATE VIEW IF NOT EXISTS "work_hours" AS
+WITH work_intervals AS (
 	SELECT
 		u.name AS user_name,
 		t.status,
@@ -67,7 +66,8 @@ IF NOT EXISTS "work_hours" AS WITH work_intervals AS(
 	JOIN type AS t ON t.id = e.type_id
 	ORDER BY
 		DATETIME(e.date) ASC
-) SELECT
+)
+SELECT
 	user_name,
 	DATE(start_time) AS work_date,
 	ROUND(
@@ -84,9 +84,8 @@ GROUP BY
 	user_name,
 	DATE(start_time);
 
-
-CREATE VIEW
-IF NOT EXISTS "current_status" AS SELECT
+CREATE VIEW IF NOT EXISTS "current_status" AS
+SELECT
 	users.id AS user_id,
 	users.name AS user_name,
 	type.id AS type_id,
@@ -107,9 +106,8 @@ AND entries.date = latest_entry.latest_date
 JOIN users ON users.id = entries.user_id
 JOIN type ON type.id = entries.type_id;
 
-
-CREATE VIEW
-IF NOT EXISTS "work_hours_with_type" AS WITH work_intervals AS (
+CREATE VIEW IF NOT EXISTS "work_hours_with_type" AS
+WITH work_intervals AS (
   SELECT
     d.name AS department,
     u.name AS user_name,
@@ -159,9 +157,7 @@ GROUP BY
   type,
   start_time;
 
-
-CREATE VIEW
-IF NOT EXISTS "entries_view" AS
+CREATE VIEW IF NOT EXISTS "entries_view" AS
 SELECT 
 	entries.id, 
 	entries.date as Date, 

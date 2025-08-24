@@ -1,18 +1,44 @@
-{{ define "title" }}Arbeitszeiten{{ end }}
+{{ define "title" }}Work Hours Overview{{ end }}
 
 {{ define "content" }}
-<div class="card p-4 mx-auto" style="max-width: 900px;">
-  <h2 class="mb-4">Arbeitszeiten</h2>
-  <table class="table table-striped table-hover table-responsive">
-    <thead>
-      <tr>{{- range .Headers }}<th scope="col">{{ . }}</th>{{- end }}</tr>
-    </thead>
-    <tbody>
-      {{- range .Rows }}
-      <tr>{{- range . }}<td>{{ . }}</td>{{- end }}</tr>
-      {{- end }}
-    </tbody>
-  </table>
-  <a href="/" class="btn btn-secondary mt-3">Zurück</a>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-clock text-primary"></i> Work Hours Overview
+  </h1>
+  <div>
+    <a href="/" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Home
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h5 class="card-title mb-0">
+      <i class="bi bi-table text-success"></i> {{ .Content.Title }}
+    </h5>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            {{- range .Content.Headers }}
+            <th scope="col" class="sticky-top bg-body">{{ . }}</th>
+            {{- end }}
+          </tr>
+        </thead>
+        <tbody>
+          {{- range .Content.Rows }}
+          <tr>
+            {{- range . }}
+            <td>{{ . }}</td>
+            {{- end }}
+          </tr>
+          {{- end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 {{ end }}

@@ -1,0 +1,170 @@
+{{ define "title" }}Edit Activity - Time Tracking System{{ end }}
+
+{{ define "content" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-pencil text-primary"></i> Edit Activity
+  </h1>
+  <div>
+    <a href="/addActivity" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Activities
+    </a>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-list-check text-success"></i> Activity Details
+        </h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="/editActivity">
+          <input type="hidden" name="id" value="{{ .Content.ID }}">
+          
+          <div class="row g-3">
+            <!-- Activity Status -->
+            <div class="col-md-6">
+              <label for="status" class="form-label">Activity Status <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="status" name="status" 
+                     value="{{ .Content.Status }}" required>
+              <div class="form-text">The name/status of this activity (e.g., Work, Break, Meeting)</div>
+            </div>
+            
+            <!-- Work Flag -->
+            <div class="col-md-6">
+              <label for="work" class="form-label">Work Type <span class="text-danger">*</span></label>
+              <select class="form-select" id="work" name="work" required>
+                <option value="1" {{ if eq .Content.Work 1 }}selected{{ end }}>Work Time</option>
+                <option value="0" {{ if eq .Content.Work 0 }}selected{{ end }}>Break Time</option>
+              </select>
+              <div class="form-text">Whether this activity counts as work time or break time</div>
+            </div>
+            
+            <!-- Comment -->
+            <div class="col-12">
+              <label for="comment" class="form-label">Description/Comment</label>
+              <textarea class="form-control" id="comment" name="comment" rows="4" 
+                        placeholder="Optional description or additional information about this activity...">{{ .Content.Comment }}</textarea>
+            </div>
+            
+            <!-- Current Activity Info -->
+            <div class="col-12">
+              <div class="alert alert-info">
+                <h6 class="alert-heading">
+                  <i class="bi bi-info-circle"></i> Current Activity Information
+                </h6>
+                <div class="row">
+                  <div class="col-md-4">
+                    <strong>ID:</strong><br>
+                    <span class="badge bg-secondary">{{ .Content.ID }}</span>
+                  </div>
+                  <div class="col-md-4">
+                    <strong>Status:</strong><br>
+                    <span class="badge bg-primary">{{ .Content.Status }}</span>
+                  </div>
+                  <div class="col-md-4">
+                    <strong>Type:</strong><br>
+                    {{ if eq .Content.Work 1 }}
+                      <span class="badge bg-success">Work Time</span>
+                    {{ else }}
+                      <span class="badge bg-warning">Break Time</span>
+                    {{ end }}
+                  </div>
+                </div>
+                {{ if .Content.Comment }}
+                <div class="mt-2">
+                  <strong>Current Comment:</strong><br>
+                  <span class="text-muted">{{ .Content.Comment }}</span>
+                </div>
+                {{ end }}
+              </div>
+            </div>
+          </div>
+          
+          <hr class="my-4">
+          
+          <div class="d-flex justify-content-between">
+            <a href="/addActivity" class="btn btn-outline-secondary">
+              <i class="bi bi-x-circle"></i> Cancel
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle"></i> Update Activity
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Form validation
+  const form = document.querySelector('form');
+  form.addEventListener('submit', function(e) {
+    const status = document.getElementById('status').value.trim();
+    const work = document.getElementById('work').value;
+    
+    if (!status || !work) {
+      e.preventDefault();
+      alert('Please fill in all required fields.');
+      return false;
+    }
+    
+    // Check if status contains only valid characters
+    if (!/^[a-zA-Z0-9\s\-_]+$/.test(status)) {
+      e.preventDefault();
+      alert('Activity status can only contain letters, numbers, spaces, hyphens, and underscores.');
+      return false;
+    }
+  });
+  
+  // Auto-save draft functionality
+  const statusInput = document.getElementById('status');
+  const commentInput = document.getElementById('comment');
+  
+  function saveDraft() {
+    const draft = {
+      status: statusInput.value,
+      comment: commentInput.value,
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('activityEditDraft', JSON.stringify(draft));
+  }
+  
+  // Save draft on input change
+  statusInput.addEventListener('input', saveDraft);
+  commentInput.addEventListener('input', saveDraft);
+  
+  // Load draft if exists
+  const savedDraft = localStorage.getItem('activityEditDraft');
+  if (savedDraft) {
+    try {
+      const draft = JSON.parse(savedDraft);
+      const draftAge = new Date() - new Date(draft.timestamp);
+      
+      // Only load draft if it's less than 1 hour old
+      if (draftAge < 3600000) {
+        if (confirm('A draft of your changes was found. Would you like to load it?')) {
+          statusInput.value = draft.status;
+          commentInput.value = draft.comment;
+        }
+      }
+    } catch (e) {
+      // Invalid draft data, ignore
+    }
+  }
+  
+  // Clear draft on successful form submission
+  form.addEventListener('submit', function() {
+    localStorage.removeItem('activityEditDraft');
+  });
+});
+</script>
+{{ end }}
+
+
+

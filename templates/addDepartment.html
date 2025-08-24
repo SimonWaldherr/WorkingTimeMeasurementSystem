@@ -1,18 +1,163 @@
-{{ define "title" }}Add Department{{ end }}
+{{ define "title" }}Department Management - Time Tracking System{{ end }}
 
 {{ define "content" }}
-<div class="card p-4 mx-auto" style="max-width:500px;">
-  <h2 class="mb-4">Add Department</h2>
-  <form action="/createDepartment" method="POST">
-    <div class="mb-3">
-      <label for="name" class="form-label">Department Name</label>
-      <input type="text" id="name" name="name"
-             class="form-control"
-             placeholder="e.g. Marketing"
-             required>
-    </div>
-    <button type="submit" class="btn btn-primary">Add</button>
-    <a href="/" class="btn btn-secondary ms-2">Cancel</a>
-  </form>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-diagram-3 text-primary"></i> Department Management
+  </h1>
+  <div>
+    <a href="/dashboard" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+  </div>
 </div>
+
+<div class="row">
+  <!-- Add Department Form -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-plus-square text-success"></i> Add New Department
+        </h5>
+      </div>
+      <div class="card-body">
+        <form action="/createDepartment" method="POST">
+          <div class="mb-3">
+            <label for="name" class="form-label">Department Name <span class="text-danger">*</span></label>
+            <input type="text" id="name" name="name"
+                   class="form-control"
+                   placeholder="e.g. Marketing"
+                   required>
+            <div class="form-text">Enter a descriptive name for the department.</div>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-plus-square"></i> Add Department
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Departments List -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-list-ul text-info"></i> Existing Departments
+        </h5>
+        <div class="d-flex gap-2">
+          <span class="badge bg-primary" id="totalDepartments">{{ len .Content.Departments }} departments</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-hover" id="departmentsTable">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Department Name</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range .Content.Departments }}
+              <tr>
+                <td><span class="badge bg-secondary">{{ .ID }}</span></td>
+                <td><strong>{{ .Name }}</strong></td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a href="/editDepartment?id={{ .ID }}" class="btn btn-outline-primary btn-sm" title="Edit Department">
+                      <i class="bi bi-pencil"></i>
+                    </a>
+                    <button type="button" class="btn btn-outline-danger btn-sm" 
+                            onclick="deleteDepartment({{ .ID }}, '{{ .Name }}')" title="Delete Department">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>Warning:</strong> This action will affect all users and time entries associated with this department.
+        </div>
+        <p>Are you sure you want to delete the department <strong id="deleteDepartmentName"></strong>?</p>
+        <p class="text-danger"><small>This action cannot be undone.</small></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="POST" style="display: inline;">
+          <input type="hidden" name="id" id="deleteDepartmentId">
+          <button type="submit" class="btn btn-danger">Delete Department</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Delete functionality
+function deleteDepartment(departmentId, departmentName) {
+  document.getElementById('deleteDepartmentId').value = departmentId;
+  document.getElementById('deleteDepartmentName').textContent = departmentName;
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Form validation
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.querySelector('form');
+  form.addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value.trim();
+    
+    if (!name) {
+      e.preventDefault();
+      alert('Please enter a department name.');
+      return false;
+    }
+    
+    // Check if name contains only valid characters
+    if (!/^[a-zA-Z0-9\s\-_&]+$/.test(name)) {
+      e.preventDefault();
+      alert('Department name can only contain letters, numbers, spaces, hyphens, underscores, and ampersands.');
+      return false;
+    }
+    
+    // Check minimum length
+    if (name.length < 2) {
+      e.preventDefault();
+      alert('Department name must be at least 2 characters long.');
+      return false;
+    }
+  });
+  
+  // Set up form submission for delete
+  document.getElementById('deleteForm').action = '/deleteDepartment';
+  
+  // Auto-refresh department count
+  const totalDepartments = document.querySelectorAll('#departmentsTable tbody tr').length;
+  document.getElementById('totalDepartments').textContent = `${totalDepartments} departments`;
+});
+</script>
 {{ end }}

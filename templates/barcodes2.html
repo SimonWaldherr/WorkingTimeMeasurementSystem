@@ -1,8 +1,7 @@
 {{ define "title" }}Barcodes drucken{{ end }}
 
 {{ define "content" }}
-<h2 class="mb-2">Barcodes für Benutzer und Aktivitäten</h2>
-<p class="text-secondary">Filtern Sie optional und drucken Sie anschließend die angezeigten Karten.</p>
+<h2 class="mb-4">Barcodes für Benutzer&nbsp;und&nbsp;Aktivitäten</h2>
 
 <!-- Tabs ------------------------------------------------------------>
 <ul class="nav nav-tabs" id="barcodeTabs" role="tablist">
@@ -19,7 +18,7 @@
 <div class="tab-content pt-4">
 
   <!-- Filter & Druck-Button oberhalb der Tabs -->
-  <div class="d-flex flex-wrap gap-3 mb-3">
+  <div class="d-flex gap-3 mb-3">
     <div>
       <label for="user-filter" class="form-label">Arbeitsplätze auswählen:</label>
       <select id="user-filter" multiple class="form-select" size="5">
@@ -36,8 +35,8 @@
         {{ end }}
       </select>
     </div>
-    <div class="align-self-end mb-2">
-      <button id="printSelected" class="btn btn-primary"><i class="bi bi-printer"></i> Ausgewählte Karten drucken</button>
+    <div class="align-self-end">
+      <button id="printSelected" class="btn btn-primary">Ausgewählte Karten drucken</button>
     </div>
   </div>
 
@@ -83,7 +82,7 @@
     JsBarcode(svg, svg.dataset.code, {
       format: "CODE128",
       width: 2,
-      height: 120,
+      height: 150,
       displayValue: false
     });
   });
@@ -91,10 +90,9 @@
   // Print Styles
   const style = document.createElement("style");
   style.textContent = `@media print {
-    svg.barcode { height:30mm !important; width:100% !important; }
-    .card { border: none !important; box-shadow: none !important; }
-    #user-filter, #activity-filter, #printSelected, .nav, h2, p.text-secondary, .mb-3, .nav-tabs { display: none !important; }
-    .page-break { break-after: page; page-break-after: always; }
+    svg.barcode { height:70mm !important; width:100% !important; }
+    .card { border:none !important; box-shadow:none !important; }
+    #user-filter, #activity-filter, #printSelected, .nav-tabs { display: none !important; }
   }`;
   document.head.append(style);
 
@@ -109,56 +107,18 @@
     const selectedUsers = Array.from(userFilter.selectedOptions).map(opt => opt.value);
     const selectedActivities = Array.from(activityFilter.selectedOptions).map(opt => opt.value);
 
-    // User-Karten anzeigen
-    let anyUserVisible = false;
+    // User-Karten zeigen, wenn User ausgewählt oder wenn keine Auswahl
     userCards.forEach(card => {
       const uid = card.dataset.userId;
-      const shouldShow = selectedUsers.length === 0 || selectedUsers.includes(uid);
-      card.style.display = shouldShow ? "" : "none";
-      if (shouldShow) anyUserVisible = true;
+      card.style.display = selectedUsers.length === 0 || selectedUsers.includes(uid) ? "" : "none";
     });
 
-    // Activity-Karten anzeigen
-    let anyActivityVisible = false;
+    // Activity-Karten zeigen, wenn Activity ausgewählt oder wenn keine Auswahl
     activityCards.forEach(card => {
       const aid = card.dataset.activityId;
-      const shouldShow = selectedActivities.length === 0 || selectedActivities.includes(aid);
-      card.style.display = shouldShow ? "" : "none";
-      if (shouldShow) anyActivityVisible = true;
+      card.style.display = selectedActivities.length === 0 || selectedActivities.includes(aid) ? "" : "none";
     });
-
-    // Filter je nach Sichtbarkeit aus-/einblenden
-    userFilter.style.display = anyUserVisible ? "" : "none";
-    activityFilter.style.display = anyActivityVisible ? "" : "none";
-
-    // Seitenumbrüche anwenden
-    applyPageBreaks();
   }
-
-  function applyPageBreaks() {
-  // Zuerst User-Karten separat behandeln
-  const visibleUserCards = Array.from(document.querySelectorAll(".user-card"))
-    .filter(card => card.style.display !== "none");
-
-  visibleUserCards.forEach(card => card.classList.remove("page-break"));
-  visibleUserCards.forEach((card, index) => {
-    if ((index + 1) % 8 === 0) {
-      card.classList.add("page-break");
-    }
-  });
-
-  // Dann Activity-Karten separat behandeln
-  const visibleActivityCards = Array.from(document.querySelectorAll(".activity-card"))
-    .filter(card => card.style.display !== "none");
-
-  visibleActivityCards.forEach(card => card.classList.remove("page-break"));
-  visibleActivityCards.forEach((card, index) => {
-    if ((index + 1) % 8 === 0) {
-      card.classList.add("page-break");
-    }
-  });
-}
-
 
   userFilter.addEventListener("change", filterCards);
   activityFilter.addEventListener("change", filterCards);

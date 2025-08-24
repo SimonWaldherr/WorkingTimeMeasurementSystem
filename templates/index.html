@@ -1,43 +1,200 @@
 {{ define "title" }}Time Tracking System{{ end }}
 
 {{ define "content" }}
-<div class="p-5 mb-4 bg-white rounded shadow-sm text-center">
-  <h1 class="display-5">Time Tracking System</h1>
-  <p class="lead">Manage users, activities and track work hours in one place.</p>
-  <a href="/addUser" class="btn btn-primary btn-lg me-2">Add User</a>
-  <a href="/addActivity" class="btn btn-primary btn-lg me-2">Add Activity</a>
-  <a href="/addDepartment" class="btn btn-primary btn-lg me-2">Add Dept</a>
-  <a href="/clockInOutForm" class="btn btn-success btn-lg me-2">Clock In/Out</a>
-  <a href="/barcodes" class="btn btn-warning btn-lg">Barcodes</a>
+<section class="p-5 mb-4 bg-white rounded-3 shadow-sm">
+  <div class="container py-3 text-center">
+    <h1 class="display-6 mb-2">Time Tracking System</h1>
+    <p class="lead text-secondary mb-4">Mitarbeitende und Aktivitäten verwalten, Zeiten erfassen und Barcodes drucken.</p>
+    <div class="d-flex flex-wrap justify-content-center gap-3">
+      <a href="/clockInOutForm" class="btn btn-success btn-lg">
+        <i class="bi bi-person-badge"></i> Ein-/Ausstempeln
+      </a>
+      {{ if .Meta.IsAdmin }}
+      <a href="/dashboard" class="btn btn-primary btn-lg">
+        <i class="bi bi-graph-up"></i> Dashboard
+      </a>
+      <a href="/entries" class="btn btn-info btn-lg">
+        <i class="bi bi-list-ul"></i> Entries
+      </a>
+      {{ end }}
+      <a href="/barcodes" class="btn btn-warning btn-lg">
+        <i class="bi bi-upc-scan"></i> Barcodes
+      </a>
+    </div>
+  </div>
+</section>
+
+<div class="row g-4">
+  {{ if .Meta.IsAdmin }}
+  <!-- Admin Quick Actions -->
+  <div class="col-md-6 mb-4">
+    <div class="card h-100 border-primary">
+      <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-shield-check"></i> Admin Management
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <a href="/addUser" class="btn btn-outline-primary">
+            <i class="bi bi-person-plus"></i> MA hinzufügen
+          </a>
+          <a href="/addActivity" class="btn btn-outline-primary">
+            <i class="bi bi-list-check"></i> Aktivität hinzufügen
+          </a>
+          <a href="/addDepartment" class="btn btn-outline-primary">
+            <i class="bi bi-diagram-3"></i> Abteilung hinzufügen
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Statistics Overview -->
+  <div class="col-md-6 mb-4">
+    <div class="card h-100 border-success">
+      <div class="card-header bg-success text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-graph-up"></i> Statistics & Reports
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <a href="/work_hours" class="btn btn-outline-success">
+            <i class="bi bi-clock"></i> Work Hours Overview
+          </a>
+          <a href="/current_status" class="btn btn-outline-success">
+            <i class="bi bi-person-check"></i> Current Status
+          </a>
+          <a href="/dashboard" class="btn btn-outline-success">
+            <i class="bi bi-bar-chart"></i> Detailed Dashboard
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {{ else }}
+  <!-- Regular User Actions -->
+  <div class="col-md-6 mb-4">
+    <div class="card h-100 border-info">
+      <div class="card-header bg-info text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-person"></i> User Actions
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <a href="/clockInOutForm" class="btn btn-outline-info">
+            <i class="bi bi-person-badge"></i> Clock In/Out
+          </a>
+          <a href="/current_status" class="btn btn-outline-info">
+            <i class="bi bi-person-check"></i> Check Status
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Information -->
+  <div class="col-md-6 mb-4">
+    <div class="card h-100 border-secondary">
+      <div class="card-header bg-secondary text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-info-circle"></i> Information
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text">Use the clock in/out form to record your work time and breaks. Contact an administrator if you need assistance.</p>
+      </div>
+    </div>
+  </div>
+  {{ end }}
+
+  <!-- Barcodes Section -->
+  <div class="col-md-6 mb-4">
+    <div class="card h-100 border-warning">
+      <div class="card-header bg-warning text-dark">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-upc-scan"></i> Barcode Management
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text text-secondary">Generate and print barcode labels for users and activities.</p>
+        <a href="/barcodes" class="btn btn-warning">
+          <i class="bi bi-upc-scan"></i> Open Barcodes
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Status -->
+  <div class="col-md-6 mb-4">
+    <div class="card h-100 border-info">
+      <div class="card-header bg-info text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-clock-history"></i> Quick Status
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text text-secondary">Check current work status and hours overview.</p>
+        <div class="d-grid gap-2">
+          <a href="/current_status" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-person-check"></i> Current Status
+          </a>
+          <a href="/work_hours" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-clock"></i> Work Hours
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<div class="row gx-4">
-  <div class="col-md-4 mb-4">
-    <div class="card h-100">
-      <div class="card-body">
-        <h5 class="card-title">Work Hours Overview</h5>
-        <p class="card-text">See total hours logged by each employee.</p>
-        <a href="/work_hours" class="btn btn-outline-primary">View</a>
+{{ if .Meta.IsAdmin }}
+<!-- Admin Quick Stats -->
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card border-primary">
+      <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-speedometer2"></i> Quick Access
+        </h5>
       </div>
-    </div>
-  </div>
-  <div class="col-md-4 mb-4">
-    <div class="card h-100">
       <div class="card-body">
-        <h5 class="card-title">Current Status</h5>
-        <p class="card-text">Who is clocked in or out right now?</p>
-        <a href="/current_status" class="btn btn-outline-primary">View</a>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-4 mb-4">
-    <div class="card h-100">
-      <div class="card-body">
-        <h5 class="card-title">Barcodes drucken</h5>
-        <p class="card-text">Barcode-Etiketten für User &amp; Activities.</p>
-        <a href="/barcodes" class="btn btn-outline-warning">Öffnen</a>
+        <div class="row g-3">
+          <div class="col-md-3">
+            <a href="/dashboard" class="btn btn-primary w-100">
+              <i class="bi bi-graph-up"></i><br>
+              <strong>Dashboard</strong><br>
+              <small>Statistics & Overview</small>
+            </a>
+          </div>
+          <div class="col-md-3">
+            <a href="/entries" class="btn btn-info w-100">
+              <i class="bi bi-list-ul"></i><br>
+              <strong>Entries</strong><br>
+              <small>Time Entry Management</small>
+            </a>
+          </div>
+          <div class="col-md-3">
+            <a href="/addUser" class="btn btn-success w-100">
+              <i class="bi bi-people"></i><br>
+              <strong>Users</strong><br>
+              <small>User Management</small>
+            </a>
+          </div>
+          <div class="col-md-3">
+            <a href="/barcodes" class="btn btn-warning w-100">
+              <i class="bi bi-upc-scan"></i><br>
+              <strong>Barcodes</strong><br>
+              <small>Generate Labels</small>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </div>
 {{ end }}
+{{ end }}
+

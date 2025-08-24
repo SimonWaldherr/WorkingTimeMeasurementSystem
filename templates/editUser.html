@@ -1,0 +1,235 @@
+{{ define "title" }}Edit User - Time Tracking System{{ end }}
+
+{{ define "content" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-pencil text-primary"></i> Edit User
+  </h1>
+  <div>
+    <a href="/addUser" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Users
+    </a>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-person-gear text-success"></i> User Details
+        </h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="/editUser">
+          <input type="hidden" name="id" value="{{ .Content.User.ID }}">
+          
+          <div class="row g-3">
+            <!-- User Name -->
+            <div class="col-md-6">
+              <label for="name" class="form-label">Full Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="name" name="name" 
+                     value="{{ .Content.User.Name }}" required>
+              <div class="form-text">The user's full name</div>
+            </div>
+            
+            <!-- Stamp Key -->
+            <div class="col-md-6">
+              <label for="stampkey" class="form-label">Stamp Key</label>
+              <input type="text" class="form-control" id="stampkey" name="stampkey" 
+                     value="{{ .Content.User.Stampkey }}">
+              <div class="form-text">Optional: Card code for clock in/out</div>
+            </div>
+            
+            <!-- Email -->
+            <div class="col-md-6">
+              <label for="email" class="form-label">Email Address</label>
+              <input type="email" class="form-control" id="email" name="email" 
+                     value="{{ .Content.User.Email }}">
+              <div class="form-text">User's email address</div>
+            </div>
+            <!-- Password -->
+            <div class="col-md-6">
+              <label for="password" class="form-label">Password</label>
+              <input type="password" class="form-control" id="password" name="password" placeholder="Leave blank to keep unchanged">
+              <div class="form-text">Optional. Set a new password for email+password stamping.</div>
+            </div>
+            
+            <!-- Position -->
+            <div class="col-md-6">
+              <label for="position" class="form-label">Position / Role <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="position" name="position" 
+                     value="{{ .Content.User.Position }}" required>
+              <div class="form-text">User's job title or role</div>
+            </div>
+            <!-- Role -->
+            <div class="col-md-6">
+              <label for="role" class="form-label">User Role</label>
+              <select id="role" name="role" class="form-select">
+                <option value="user" {{ if ne .Content.User.Role "admin" }}selected{{ end }}>User</option>
+                <option value="admin" {{ if eq .Content.User.Role "admin" }}selected{{ end }}>Admin</option>
+              </select>
+            </div>
+            
+            <!-- Department -->
+            <div class="col-12">
+              <label for="department_id" class="form-label">Department <span class="text-danger">*</span></label>
+              <select class="form-select" id="department_id" name="department_id" required>
+                <option value="">Select Department</option>
+                {{ range .Content.Departments }}
+                <option value="{{ .ID }}" {{ if eq .ID $.Content.User.DepartmentID }}selected{{ end }}>
+                  {{ .Name }}
+                </option>
+                {{ end }}
+              </select>
+              <div class="form-text">User's department assignment</div>
+            </div>
+            
+            <!-- Current User Info -->
+            <div class="col-12">
+              <div class="alert alert-info">
+                <h6 class="alert-heading">
+                  <i class="bi bi-info-circle"></i> Current User Information
+                </h6>
+                <div class="row">
+                  <div class="col-md-3">
+                    <strong>ID:</strong><br>
+                    <span class="badge bg-secondary">{{ .Content.User.ID }}</span>
+                  </div>
+                  <div class="col-md-3">
+                    <strong>Name:</strong><br>
+                    <span class="badge bg-primary">{{ .Content.User.Name }}</span>
+                  </div>
+                  <div class="col-md-3">
+                    <strong>Position:</strong><br>
+                    <span class="badge bg-info">{{ .Content.User.Position }}</span>
+                  </div>
+                  <div class="col-md-3">
+                    <strong>Department ID:</strong><br>
+                    <span class="badge bg-success">{{ .Content.User.DepartmentID }}</span>
+                  </div>
+                </div>
+                {{ if .Content.User.Email }}
+                <div class="mt-2">
+                  <strong>Email:</strong><br>
+                  <span class="text-muted">{{ .Content.User.Email }}</span>
+                </div>
+                {{ end }}
+                <div class="mt-2">
+                  <strong>Password:</strong><br>
+                  {{ if .Content.User.Password }}
+                  <span class="badge bg-success">set</span>
+                  {{ else }}
+                  <span class="badge bg-secondary">none</span>
+                  {{ end }}
+                </div>
+                {{ if .Content.User.Stampkey }}
+                <div class="mt-2">
+                  <strong>Stamp Key:</strong><br>
+                  <code class="small">{{ .Content.User.Stampkey }}</code>
+                </div>
+                {{ end }}
+              </div>
+            </div>
+          </div>
+          
+          <hr class="my-4">
+          
+          <div class="d-flex justify-content-between">
+            <a href="/addUser" class="btn btn-outline-secondary">
+              <i class="bi bi-x-circle"></i> Cancel
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle"></i> Update User
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Form validation
+  const form = document.querySelector('form');
+  form.addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value.trim();
+    const position = document.getElementById('position').value.trim();
+    const departmentId = document.getElementById('department_id').value;
+    
+    if (!name || !position || !departmentId) {
+      e.preventDefault();
+      alert('Please fill in all required fields.');
+      return false;
+    }
+    
+    // Check if name contains only valid characters
+    if (!/^[a-zA-Z0-9\s\-_]+$/.test(name)) {
+      e.preventDefault();
+      alert('Name can only contain letters, numbers, spaces, hyphens, and underscores.');
+      return false;
+    }
+    
+    // Check minimum length
+    if (name.length < 2) {
+      e.preventDefault();
+      alert('Name must be at least 2 characters long.');
+      return false;
+    }
+  });
+  
+  // Auto-save draft functionality
+  const nameInput = document.getElementById('name');
+  const emailInput = document.getElementById('email');
+  const positionInput = document.getElementById('position');
+  const stampkeyInput = document.getElementById('stampkey');
+  
+  function saveDraft() {
+    const draft = {
+      name: nameInput.value,
+      email: emailInput.value,
+      position: positionInput.value,
+      stampkey: stampkeyInput.value,
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('userEditDraft', JSON.stringify(draft));
+  }
+  
+  // Save draft on input change
+  nameInput.addEventListener('input', saveDraft);
+  emailInput.addEventListener('input', saveDraft);
+  positionInput.addEventListener('input', saveDraft);
+  stampkeyInput.addEventListener('input', saveDraft);
+  
+  // Load draft if exists
+  const savedDraft = localStorage.getItem('userEditDraft');
+  if (savedDraft) {
+    try {
+      const draft = JSON.parse(savedDraft);
+      const draftAge = new Date() - new Date(draft.timestamp);
+      
+      // Only load draft if it's less than 1 hour old
+      if (draftAge < 3600000) {
+        if (confirm('A draft of your changes was found. Would you like to load it?')) {
+          nameInput.value = draft.name;
+          emailInput.value = draft.email;
+          positionInput.value = draft.position;
+          stampkeyInput.value = draft.stampkey;
+        }
+      }
+    } catch (e) {
+      // Invalid draft data, ignore
+    }
+  }
+  
+  // Clear draft on successful form submission
+  form.addEventListener('submit', function() {
+    localStorage.removeItem('userEditDraft');
+  });
+});
+</script>
+{{ end }}
+
+
+
