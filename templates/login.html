@@ -1,11 +1,13 @@
 {{ define "title" }}Login{{ end }}
 
 {{ define "content" }}
-<div class="card p-4 mx-auto" style="max-width:400px;">
-  <h2 class="mb-4">Login</h2>
-  {{if .Error}}
-    <div class="alert alert-danger">{{.Error}}</div>
-  {{end}}
+<div class="card p-4 mx-auto" style="max-width:420px;">
+  <h2 class="mb-3">Login</h2>
+  {{ with .Content }}
+    {{ if .Error }}
+      <div class="alert alert-danger" role="alert">{{ .Error }}</div>
+    {{ end }}
+  {{ end }}
   <form method="post" action="/login">
     <div class="mb-3">
       <label for="username" class="form-label">Benutzername</label>
@@ -15,7 +17,7 @@
       <label for="password" class="form-label">Passwort</label>
       <input type="password" class="form-control" id="password" name="password" required>
     </div>
-    <button type="submit" class="btn btn-success">Login</button>
+    <button type="submit" class="btn btn-success w-100"><i class="bi bi-box-arrow-in-right"></i> Login</button>
   </form>
 </div>
 {{ end }}

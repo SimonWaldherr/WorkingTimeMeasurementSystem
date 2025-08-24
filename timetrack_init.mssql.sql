@@ -28,6 +28,8 @@ CREATE TABLE [dbo].[users] (
     [stampkey] NVARCHAR(255) NOT NULL,
     [name] NVARCHAR(255) NOT NULL,
     [email] NVARCHAR(255) UNIQUE NOT NULL,
+    [password] NVARCHAR(255) NULL,
+    [role] NVARCHAR(50) NULL DEFAULT 'user',
     [position] NVARCHAR(255),
     [department_id] INT,
     FOREIGN KEY ([department_id]) REFERENCES [dbo].[departments] ([id])

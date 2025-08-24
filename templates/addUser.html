@@ -1,46 +1,235 @@
-{{ define "title" }}Add User{{ end }}
+{{ define "title" }}User Management - Time Tracking System{{ end }}
 
 {{ define "content" }}
-<div class="card p-4 mx-auto" style="max-width: 600px;">
-  <h2 class="mb-4">Add User</h2>
-  <form action="/createUser" method="POST">
-    <div class="mb-3">
-      <label for="name" class="form-label">Full Name</label>
-      <input type="text" id="name" name="name"
-             class="form-control"
-             placeholder="John Doe"
-             required>
-    </div>
-    <div class="mb-3">
-      <label for="stampkey" class="form-label">Stamp Key</label>
-      <input type="text" id="stampkey" name="stampkey"
-             class="form-control"
-             placeholder="ABCD1234">
-    </div>
-    <div class="mb-3">
-      <label for="email" class="form-label">Email Address</label>
-      <input type="email" id="email" name="email"
-             class="form-control"
-             placeholder="john@example.com">
-    </div>
-    <div class="mb-3">
-      <label for="position" class="form-label">Position / Role</label>
-      <input type="text" id="position" name="position"
-             class="form-control"
-             placeholder="e.g. Manager"
-             required>
-    </div>
-    <div class="mb-3">
-      <label for="department_id" class="form-label">Department</label>
-      <select id="department_id" name="department_id"
-              class="form-select" required>
-        {{range .Departments}}
-          <option value="{{.ID}}">{{.Name}}</option>
-        {{end}}
-      </select>
-    </div>
-    <button type="submit" class="btn btn-primary">Add User</button>
-    <a href="/" class="btn btn-secondary ms-2">Cancel</a>
-  </form>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-people text-primary"></i> User Management
+  </h1>
+  <div>
+    <a href="/dashboard" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+  </div>
 </div>
+
+<div class="row">
+  <!-- Add User Form -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-person-plus text-success"></i> Add New User
+        </h5>
+      </div>
+      <div class="card-body">
+        <form action="/createUser" method="POST">
+          <div class="mb-3">
+            <label for="name" class="form-label">Full Name <span class="text-danger">*</span></label>
+            <input type="text" id="name" name="name"
+                   class="form-control"
+                   placeholder="John Doe"
+                   required>
+          </div>
+          <div class="mb-3">
+            <label for="stampkey" class="form-label">Stamp Key</label>
+            <input type="text" id="stampkey" name="stampkey"
+                   class="form-control"
+                   placeholder="e.g. Mitarbeitendenkarte-Code">
+            <div class="form-text">Optional, can be added later via scan.</div>
+          </div>
+          <div class="mb-3">
+            <label for="email" class="form-label">Email Address</label>
+            <input type="email" id="email" name="email"
+                   class="form-control"
+                   placeholder="john@example.com">
+          </div>
+          <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <input type="password" id="password" name="password"
+                   class="form-control"
+                   placeholder="Set an optional login password">
+            <div class="form-text">Optional: used for email+password stamping.</div>
+          </div>
+          <div class="mb-3">
+            <label for="position" class="form-label">Position / Role <span class="text-danger">*</span></label>
+            <input type="text" id="position" name="position"
+                   class="form-control"
+                   placeholder="e.g. Manager"
+                   required>
+          </div>
+          <div class="mb-3">
+            <label for="role" class="form-label">User Role</label>
+            <select id="role" name="role" class="form-select">
+              <option value="user" selected>User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="department_id" class="form-label">Department <span class="text-danger">*</span></label>
+            <select id="department_id" name="department_id"
+                    class="form-select" required>
+              {{range .Content.Departments}}
+                <option value="{{.ID}}">{{.Name}}</option>
+              {{end}}
+            </select>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-person-plus"></i> Add User
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Users List -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-list-ul text-info"></i> Existing Users
+        </h5>
+        <div class="d-flex gap-2">
+          <span class="badge bg-primary" id="totalUsers">{{ len .Content.Users }} users</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-hover" id="usersTable">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Position</th>
+                <th>Role</th>
+                <th>Department</th>
+                <th>Stamp Key</th>
+                <th>Password</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range .Content.Users }}
+              <tr>
+                <td><span class="badge bg-secondary">{{ .ID }}</span></td>
+                <td><strong>{{ .Name }}</strong></td>
+                <td>
+                  {{ if .Email }}
+                    <a href="mailto:{{ .Email }}" class="text-decoration-none">{{ .Email }}</a>
+                  {{ else }}
+                    <span class="text-muted fst-italic">No email</span>
+                  {{ end }}
+                </td>
+                <td><span class="badge bg-info">{{ .Position }}</span></td>
+                <td>
+                  {{ if eq .Role "admin" }}
+                    <span class="badge bg-danger">admin</span>
+                  {{ else }}
+                    <span class="badge bg-secondary">user</span>
+                  {{ end }}
+                </td>
+                <td>
+                  {{ if .DepartmentID }}
+                    <span class="badge bg-success">{{ .DepartmentID }}</span>
+                  {{ else }}
+                    <span class="badge bg-warning">No Department</span>
+                  {{ end }}
+                </td>
+                <td>
+                  {{ if .Stampkey }}
+                    <code class="small">{{ .Stampkey }}</code>
+                  {{ else }}
+                    <span class="text-muted fst-italic">No key</span>
+                  {{ end }}
+                </td>
+                <td>
+                  {{ if .Password }}
+                    <span class="badge bg-success">set</span>
+                  {{ else }}
+                    <span class="badge bg-secondary">none</span>
+                  {{ end }}
+                </td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a href="/editUser?id={{ .ID }}" class="btn btn-outline-primary btn-sm" title="Edit User">
+                      <i class="bi bi-pencil"></i>
+                    </a>
+          <button type="button" class="btn btn-outline-danger btn-sm" 
+            data-id="{{ .ID }}" data-name="{{ .Name }}" onclick="deleteUser(this.dataset.id, this.dataset.name)" title="Delete User">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>Warning:</strong> This action will also delete all time entries associated with this user.
+        </div>
+        <p>Are you sure you want to delete the user <strong id="deleteUserName"></strong>?</p>
+        <p class="text-danger"><small>This action cannot be undone.</small></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="POST" style="display: inline;">
+          <input type="hidden" name="id" id="deleteUserId">
+          <button type="submit" class="btn btn-danger">Delete User</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Delete functionality
+function deleteUser(userId, userName) {
+  document.getElementById('deleteUserId').value = userId;
+  document.getElementById('deleteUserName').textContent = userName;
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Form validation
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.querySelector('form');
+  form.addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value.trim();
+    const position = document.getElementById('position').value.trim();
+    const departmentId = document.getElementById('department_id').value;
+    
+    if (!name || !position || !departmentId) {
+      e.preventDefault();
+      alert('Please fill in all required fields.');
+      return false;
+    }
+  });
+  
+  // Set up form submission for delete
+  document.getElementById('deleteForm').action = '/deleteUser';
+  
+  // Auto-refresh user count
+  const totalUsers = document.querySelectorAll('#usersTable tbody tr').length;
+  document.getElementById('totalUsers').textContent = `${totalUsers} users`;
+});
+</script>
 {{ end }}

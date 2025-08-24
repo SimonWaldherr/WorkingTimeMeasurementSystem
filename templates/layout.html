@@ -1,33 +1,41 @@
-{{ define "title" }}Arbeitszeiten & Status{{ end }}
+{{ define "title" }}Work Hours & Status{{ end }}
 
 {{ define "content" }}
-<h2 class="mb-4">Arbeitszeiten & aktueller Status</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-clock-history text-primary"></i> Work Hours & Status
+  </h1>
+  <div>
+    <a href="/" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Home
+    </a>
+  </div>
+</div>
 
 <ul class="nav nav-tabs" id="dataTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="workhours-tab" data-bs-toggle="tab"
-            data-bs-target="#workhours" type="button" role="tab">Arbeitszeiten</button>
+            data-bs-target="#workhours" type="button" role="tab">Work Hours</button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="status-tab" data-bs-toggle="tab"
-            data-bs-target="#status" type="button" role="tab">Aktueller Status</button>
+            data-bs-target="#status" type="button" role="tab">Current Status</button>
   </li>
 </ul>
 
 <div class="tab-content mt-3">
   <div class="tab-pane fade show active" id="workhours" role="tabpanel" aria-labelledby="workhours-tab">
     <div class="card p-3 shadow-sm">
-      {{ template "table" .WorkHoursTable }}
+      {{ template "table" .Content.WorkHoursTable }}
     </div>
   </div>
 
   <div class="tab-pane fade" id="status" role="tabpanel" aria-labelledby="status-tab">
     <div class="card p-3 shadow-sm">
-      {{ template "table" .CurrentStatusTable }}
+      {{ template "table" .Content.CurrentStatusTable }}
     </div>
   </div>
 </div>
-
 {{ end }}
 
 {{ define "table" }}

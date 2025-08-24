@@ -1,0 +1,222 @@
+{{ define "title" }}Entries Management - Time Tracking System{{ end }}
+
+{{ define "content" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-list-ul text-primary"></i> Time Entries Management
+  </h1>
+  <div>
+    <a href="/dashboard" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+  </div>
+</div>
+
+<!-- Search and Filter Bar -->
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label for="searchUser" class="form-label">Search User</label>
+        <input type="text" class="form-control" id="searchUser" placeholder="Enter user name...">
+      </div>
+      <div class="col-md-3">
+        <label for="filterDepartment" class="form-label">Department</label>
+        <select class="form-select" id="filterDepartment">
+          <option value="">All Departments</option>
+          <option value="No Department">No Department</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="filterActivity" class="form-label">Activity</label>
+        <select class="form-select" id="filterActivity">
+          <option value="">All Activities</option>
+          {{ range .Content.Activities }}
+          <option value="{{ .Status }}">{{ .Status }}</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button type="button" class="btn btn-primary me-2" onclick="applyFilters()">
+          <i class="bi bi-funnel"></i> Apply Filters
+        </button>
+        <button type="button" class="btn btn-outline-secondary" onclick="clearFilters()">
+          <i class="bi bi-x-circle"></i> Clear
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Entries Table -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="card-title mb-0">
+      <i class="bi bi-table text-success"></i> Time Entries
+    </h5>
+    <div class="d-flex gap-2">
+      <span class="badge bg-primary" id="totalEntries">{{ len .Content.Entries }} entries</span>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover" id="entriesTable">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>User</th>
+            <th>Department</th>
+            <th>Activity</th>
+            <th>Date</th>
+            <th>Duration (h)</th>
+            <th>Comment</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Content.Entries }}
+          <tr data-user="{{ .UserName }}" data-department="{{ .Department }}" data-activity="{{ .Activity }}">
+            <td><span class="badge bg-secondary">{{ .ID }}</span></td>
+            <td><strong>{{ .UserName }}</strong></td>
+            <td><span class="badge bg-info">{{ .Department }}</span></td>
+            <td>
+              {{ if eq .Activity "Work" }}
+                <span class="badge bg-success">{{ .Activity }}</span>
+              {{ else if eq .Activity "Break" }}
+                <span class="badge bg-warning">{{ .Activity }}</span>
+              {{ else }}
+                <span class="badge bg-secondary">{{ .Activity }}</span>
+              {{ end }}
+            </td>
+            <td><small>{{ .Date }}</small></td>
+            <td>
+              <span class="text-primary fw-bold">{{ printf "%.2f" .Duration }}</span>
+            </td>
+            <td>
+              {{ if .Comment }}
+                <span class="text-muted">{{ .Comment }}</span>
+              {{ else }}
+                <span class="text-muted fst-italic">No comment</span>
+              {{ end }}
+            </td>
+            <td>
+              <div class="btn-group btn-group-sm" role="group">
+                <a href="/editEntry?id={{ .ID }}" class="btn btn-outline-primary btn-sm" title="Edit Entry">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <button type="button" class="btn btn-outline-danger btn-sm" 
+                        onclick="deleteEntry({{ .ID }}, '{{ .UserName }}')" title="Delete Entry">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete the time entry for <strong id="deleteUserName"></strong>?</p>
+        <p class="text-danger"><small>This action cannot be undone.</small></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="POST" style="display: inline;">
+          <input type="hidden" name="id" id="deleteEntryId">
+          <button type="submit" class="btn btn-danger">Delete Entry</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Filter functionality
+function applyFilters() {
+  const searchUser = document.getElementById('searchUser').value.toLowerCase();
+  const filterDepartment = document.getElementById('filterDepartment').value;
+  const filterActivity = document.getElementById('filterActivity').value;
+  
+  const rows = document.querySelectorAll('#entriesTable tbody tr');
+  let visibleCount = 0;
+  
+  rows.forEach(row => {
+    const userName = row.getAttribute('data-user').toLowerCase();
+    const department = row.getAttribute('data-department');
+    const activity = row.getAttribute('data-activity');
+    
+    const matchesUser = !searchUser || userName.includes(searchUser);
+    const matchesDepartment = !filterDepartment || department === filterDepartment;
+    const matchesActivity = !filterActivity || activity === filterActivity;
+    
+    if (matchesUser && matchesDepartment && matchesActivity) {
+      row.style.display = '';
+      visibleCount++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+  
+  document.getElementById('totalEntries').textContent = `${visibleCount} entries`;
+}
+
+function clearFilters() {
+  document.getElementById('searchUser').value = '';
+  document.getElementById('filterDepartment').value = '';
+  document.getElementById('filterActivity').value = '';
+  applyFilters();
+}
+
+// Delete functionality
+function deleteEntry(entryId, userName) {
+  document.getElementById('deleteEntryId').value = entryId;
+  document.getElementById('deleteUserName').textContent = userName;
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Initialize department filter options
+document.addEventListener('DOMContentLoaded', function() {
+  const departments = new Set();
+  const rows = document.querySelectorAll('#entriesTable tbody tr');
+  
+  rows.forEach(row => {
+    const dept = row.getAttribute('data-department');
+    if (dept) departments.add(dept);
+  });
+  
+  const filterSelect = document.getElementById('filterDepartment');
+  departments.forEach(dept => {
+    if (dept !== 'No Department') {
+      const option = document.createElement('option');
+      option.value = dept;
+      option.textContent = dept;
+      filterSelect.appendChild(option);
+    }
+  });
+  
+  // Set up form submission for delete
+  document.getElementById('deleteForm').action = '/deleteEntry';
+});
+
+// Auto-apply filters on input change
+document.getElementById('searchUser').addEventListener('input', applyFilters);
+document.getElementById('filterDepartment').addEventListener('change', applyFilters);
+document.getElementById('filterActivity').addEventListener('change', applyFilters);
+</script>
+{{ end }}
+
+
+

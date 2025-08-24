@@ -5,7 +5,6 @@ import (
 	//"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
-	"html/template"
 
 	//"database/sql"
 
@@ -13,8 +12,10 @@ import (
 	"net/http"
 	"os"
 
-	//"strings"
+	"strings"
 	"time"
+	"strconv"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gorilla/sessions"
 )
@@ -100,10 +101,6 @@ func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Hand
 	})
 }
 
-func unauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-}
 
 func init() {
 	// ensure schema is in place
@@ -112,19 +109,31 @@ func init() {
 
 func main() {
 	// load auth users
+	log.Printf("Starting WorkingTime with %s…", dbBackend)
+	log.Printf("  DB_BACKEND = %s", dbBackend)
+	if dbBackend == "sqlite" {
+		log.Printf("  SQLITE_PATH = %s", os.Getenv("SQLITE_PATH"))
+	} else {
+		log.Printf("  MSSQL_SERVER = %s", os.Getenv("MSSQL_SERVER"))
+		log.Printf("  MSSQL_DATABASE = %s", os.Getenv("MSSQL_DATABASE"))
+		log.Printf("  MSSQL_USER = %s", os.Getenv("MSSQL_USER"))
+	}
 	users, err := loadCredentials("credentials.csv")
 	if err != nil {
 		log.Fatalf("Error loading credentials: %v", err)
 	}
+	log.Printf("  Credentials file = %s", "credentials.csv")
 
 	mux := http.NewServeMux()
 
 	// Login & Logout
 	mux.Handle("/login", loginHandler(users))
 	mux.HandleFunc("/logout", logoutHandler)
+	// Password-based stamping page
+	mux.HandleFunc("/passwordStamp", passwordStampHandler)
 
 	// core pages (unprotected)
-	mux.Handle("/", http.HandlerFunc(indexHandler))
+	mux.Handle("/", basicAuthMiddleware(users, http.HandlerFunc(indexHandler)))
 	mux.Handle("/addUser", basicAuthMiddleware(users, http.HandlerFunc(addUserHandler)))
 	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
 	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
@@ -140,6 +149,17 @@ func main() {
 	mux.Handle("/work_status", basicAuthMiddleware(users, http.HandlerFunc(workStatusHandler)))
 	//mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
 
+	// Enhanced statistics and management
+	mux.Handle("/dashboard", basicAuthMiddleware(users, http.HandlerFunc(dashboardHandler)))
+	mux.Handle("/entries", basicAuthMiddleware(users, http.HandlerFunc(entriesHandler)))
+	mux.Handle("/editEntry", basicAuthMiddleware(users, http.HandlerFunc(editEntryHandler)))
+	mux.Handle("/editActivity", basicAuthMiddleware(users, http.HandlerFunc(editActivityHandler)))
+	mux.Handle("/editDepartment", basicAuthMiddleware(users, http.HandlerFunc(editDepartmentHandler)))
+	mux.Handle("/deleteEntry", basicAuthMiddleware(users, http.HandlerFunc(deleteEntryHandler)))
+	mux.Handle("/deleteActivity", basicAuthMiddleware(users, http.HandlerFunc(deleteActivityHandler)))
+	mux.Handle("/deleteDepartment", basicAuthMiddleware(users, http.HandlerFunc(deleteDepartmentHandler)))
+	mux.Handle("/deleteUser", basicAuthMiddleware(users, http.HandlerFunc(deleteUserHandler)))
+
 	// barcodes page
 	mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
 
@@ -154,8 +174,21 @@ func main() {
 	mux.Handle("/scan", http.HandlerFunc(scanHandler))
 	mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
 
+	log.Printf("App will listen on http://localhost:8083")
 	log.Printf("Starting server on :8083…")
-	log.Fatal(http.ListenAndServe(":8083", mux))
+	// Root wrapper to bind request host for multi-tenant SQLite
+	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if idx := strings.IndexByte(host, ':'); idx >= 0 { // strip port
+			host = host[:idx]
+		}
+		SetRequestHost(host)
+		// ensure per-host SQLite DB has schema
+		EnsureSchemaCurrent()
+		defer ClearRequestHost()
+		mux.ServeHTTP(w, r)
+	})
+	log.Fatal(http.ListenAndServe(":8083", root))
 }
 
 // indexHandler shows the home page
@@ -169,34 +202,42 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		Users:      users,
 		Activities: activities,
 	}
-	renderTemplate(w, "index", data)
+	renderTemplate(w, r, "index", data)
 }
 
 func loginHandler(users map[string]AuthUser) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			renderTemplate(w, "login", nil)
+			renderTemplate(w, r, "login", nil)
 			return
 		}
 		// POST
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 		user, ok := users[username]
-		if !ok || user.Password != password {
-			renderTemplate(w, "login", map[string]interface{}{
-				"Error": "Benutzername oder Passwort falsch.",
-			})
+		if ok && user.Password == password {
+			session, _ := store.Get(r, "session")
+			session.Values["username"] = user.Username
+			session.Values["role"] = user.Role
+			session.Options = &sessions.Options{Path: "/", MaxAge: sessionDuration * 60, HttpOnly: true}
+			session.Save(r, w)
+			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
-		session, _ := store.Get(r, "session")
-		session.Values["username"] = user.Username
-		session.Options = &sessions.Options{
-			Path:     "/",
-			MaxAge:   sessionDuration * 60, // in Sekunden
-			HttpOnly: true,
+
+		// Try DB users: treat username as email
+		if u, exists := getUserByEmail(username); exists && u.Password != "" {
+			if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err == nil {
+				activities := getActivities()
+				renderTemplate(w, r, "passwordStamp", map[string]any{
+					"User":       u,
+					"Activities": activities,
+					"Pwd":        password,
+				})
+				return
+			}
 		}
-		session.Save(r, w)
-		http.Redirect(w, r, "/", http.StatusFound)
+		renderTemplate(w, r, "login", map[string]any{"Error": "Benutzername oder Passwort falsch."})
 	}
 }
 
@@ -219,8 +260,6 @@ type Entry struct {
 	End        string
 }
 
-// Zeitformat: DD.MM.YYYY HH:MM[:SS]
-const timeLayout = "02.01.2006 15:04:05" // oder ohne Sekunden "02.01.2006 15:04"
 
 // clockInOutForm shows the manual clock in/out form
 func clockInOutForm(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +273,7 @@ func clockInOutForm(w http.ResponseWriter, r *http.Request) {
 			Users:      users,
 			Activities: activities,
 		}
-		renderTemplate(w, "clockInOutForm", data)
+		renderTemplate(w, r, "clockInOutForm", data)
 	}
 }
 
@@ -242,7 +281,11 @@ func clockInOutForm(w http.ResponseWriter, r *http.Request) {
 func addUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		depts := getDepartments()
-		renderTemplate(w, "addUser", struct{ Departments []Department }{depts})
+		users := getUsers()
+		renderTemplate(w, r, "addUser", struct {
+			Departments []Department
+			Users       []User
+		}{depts, users})
 	}
 }
 
@@ -252,7 +295,7 @@ func editUserHandler(w http.ResponseWriter, r *http.Request) {
 		id := r.FormValue("id")
 		u := getUser(id)
 		depts := getDepartments()
-		renderTemplate(w, "editUser", struct {
+		renderTemplate(w, r, "editUser", struct {
 			User        User
 			Departments []Department
 		}{u, depts})
@@ -263,6 +306,8 @@ func editUserHandler(w http.ResponseWriter, r *http.Request) {
 			r.FormValue("name"),
 			r.FormValue("stampkey"),
 			r.FormValue("email"),
+			r.FormValue("password"),
+			r.FormValue("role"),
 			r.FormValue("position"),
 			r.FormValue("department_id"),
 		)
@@ -273,14 +318,20 @@ func editUserHandler(w http.ResponseWriter, r *http.Request) {
 // addActivityHandler shows the add-activity page
 func addActivityHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		renderTemplate(w, "addActivity", nil)
+		activities := getActivities()
+		renderTemplate(w, r, "addActivity", struct {
+			Activities []Activity
+		}{activities})
 	}
 }
 
 // addDepartmentHandler shows the add-department page
 func addDepartmentHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		renderTemplate(w, "addDepartment", nil)
+		depts := getDepartments()
+		renderTemplate(w, r, "addDepartment", struct {
+			Departments []Department
+		}{depts})
 	}
 }
 
@@ -291,6 +342,8 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 			r.FormValue("name"),
 			r.FormValue("stampkey"),
 			r.FormValue("email"),
+			r.FormValue("password"),
+			r.FormValue("role"),
 			r.FormValue("position"),
 			r.FormValue("department_id"),
 		)
@@ -306,7 +359,7 @@ func barcodesHandler(w http.ResponseWriter, r *http.Request) {
 		Users:      getUsers(),
 		Activities: getActivities(),
 	}
-	renderTemplate(w, "barcodes", data)
+	renderTemplate(w, r, "barcodes", data)
 }
 
 // createActivityHandler processes adding a new activity
@@ -356,6 +409,47 @@ func clockInOut(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, r.Header.Get("Referer"), http.StatusSeeOther)
 }
 
+// passwordStampHandler allows stamping by email+password, then choosing activity buttons
+func passwordStampHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		// show login form
+		renderTemplate(w, r, "passwordStamp", nil)
+		return
+	case http.MethodPost:
+		email := r.FormValue("email")
+		pwd := r.FormValue("pwd")
+		activityID := r.FormValue("activity_id")
+		u, ok := getUserByEmail(email)
+		if !ok || u.Password == "" {
+			renderTemplate(w, r, "passwordStamp", map[string]any{"Error": "Unbekannte E-Mail oder kein Passwort gesetzt."})
+			return
+		}
+		// verify password
+		if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(pwd)); err != nil {
+			renderTemplate(w, r, "passwordStamp", map[string]any{"Error": "Falsches Passwort."})
+			return
+		}
+		if activityID == "" {
+			// show activities as buttons
+			activities := getActivities()
+			renderTemplate(w, r, "passwordStamp", map[string]any{
+				"User":       u,
+				"Activities": activities,
+				"Pwd":        pwd, // keep for next post to avoid retyping
+			})
+			return
+		}
+		// stamp entry
+		createEntry(strconv.Itoa(u.ID), activityID, time.Now())
+		renderTemplate(w, r, "passwordStamp", map[string]any{"User": u, "Success": true})
+		return
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+}
+
 type PageData struct {
 	WorkHoursTable     TableData
 	CurrentStatusTable TableData
@@ -375,21 +469,33 @@ func workStatusHandler(w http.ResponseWriter, r *http.Request) {
 		statusRows[i] = []interface{}{d.UserName, d.Status, d.Date}
 	}
 
-	pageData := PageData{
-		WorkHoursTable: TableData{
+	pageData := struct {
+		WorkHoursTable struct {
+			Headers []string
+			Rows    [][]interface{}
+		}
+		CurrentStatusTable struct {
+			Headers []string
+			Rows    [][]interface{}
+		}
+	}{
+		WorkHoursTable: struct {
+			Headers []string
+			Rows    [][]interface{}
+		}{
 			Headers: []string{"User Name", "Work Date", "Work Hours"},
 			Rows:    workRows,
 		},
-		CurrentStatusTable: TableData{
+		CurrentStatusTable: struct {
+			Headers []string
+			Rows    [][]interface{}
+		}{
 			Headers: []string{"User Name", "Status", "Date"},
 			Rows:    statusRows,
 		},
 	}
 
-	tmpl := template.Must(template.New("page").ParseFiles("templates/layout.html")) // Oder dein Template-Setup
-	if err := tmpl.ExecuteTemplate(w, "page", pageData); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	renderTemplate(w, r, "layout", pageData)
 }
 
 // workHoursHandler shows the work hours table
@@ -400,7 +506,18 @@ func workHoursHandler(w http.ResponseWriter, r *http.Request) {
 	for i, d := range data {
 		rows[i] = []interface{}{d.UserName, d.WorkDate, d.WorkHours}
 	}
-	renderHTMLTable(w, "Work Hours", TableData{Headers: headers, Rows: rows})
+
+	tableData := struct {
+		Title   string
+		Headers []string
+		Rows    [][]interface{}
+	}{
+		Title:   "Work Hours Overview",
+		Headers: headers,
+		Rows:    rows,
+	}
+
+	renderTemplate(w, r, "workhours", tableData)
 }
 
 // currentStatusHandler shows who is currently clocked in/out
@@ -411,13 +528,24 @@ func currentStatusHandler(w http.ResponseWriter, r *http.Request) {
 	for i, d := range data {
 		rows[i] = []interface{}{d.UserName, d.Status, d.Date}
 	}
-	renderHTMLTable(w, "Current Status", TableData{Headers: headers, Rows: rows})
+
+	tableData := struct {
+		Title   string
+		Headers []string
+		Rows    [][]interface{}
+	}{
+		Title:   "Current Status",
+		Headers: headers,
+		Rows:    rows,
+	}
+
+	renderTemplate(w, r, "currentstatus", tableData)
 }
 
 // scanHandler serves the barcode-scanning page
 func scanHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		renderTemplate(w, "scan", nil)
+		renderTemplate(w, r, "scan", nil)
 		return
 	}
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -460,4 +588,204 @@ func bulkClockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Enhanced dashboard handler
+func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	deptSummary := getDepartmentSummary()
+	timeTrends := getTimeTrackingTrends(30) // Last 30 days
+	userActivity := getUserActivitySummary()
+
+	// Calculate quick stats
+	var totalUsers, totalHours, activeUsers int
+	var avgHoursPerUser float64
+
+	for _, dept := range deptSummary {
+		totalUsers += dept.TotalUsers
+		totalHours += int(dept.TotalHours)
+	}
+
+	if totalUsers > 0 {
+		avgHoursPerUser = float64(totalHours) / float64(totalUsers)
+	}
+
+	// Count active users (users with activity in last 7 days)
+	for _, user := range userActivity {
+		if user.LastActivity != "" {
+			activeUsers++
+		}
+	}
+
+	data := struct {
+		DepartmentSummary []DepartmentSummary
+		TimeTrends        []TimeTrackingTrend
+		UserActivity      []UserActivitySummary
+		QuickStats        struct {
+			TotalUsers      int
+			TotalHours      int
+			ActiveUsers     int
+			AvgHoursPerUser float64
+		}
+	}{
+		DepartmentSummary: deptSummary,
+		TimeTrends:        timeTrends,
+		UserActivity:      userActivity,
+		QuickStats: struct {
+			TotalUsers      int
+			TotalHours      int
+			ActiveUsers     int
+			AvgHoursPerUser float64
+		}{
+			TotalUsers:      totalUsers,
+			TotalHours:      totalHours,
+			ActiveUsers:     activeUsers,
+			AvgHoursPerUser: avgHoursPerUser,
+		},
+	}
+
+	renderTemplate(w, r, "dashboard", data)
+}
+
+// Entries management handler
+func entriesHandler(w http.ResponseWriter, r *http.Request) {
+	entries := getEntriesWithDetails()
+	users := getUsers()
+	activities := getActivities()
+
+	data := struct {
+		Entries    []EntryDetail
+		Users      []User
+		Activities []Activity
+	}{
+		Entries:    entries,
+		Users:      users,
+		Activities: activities,
+	}
+
+	renderTemplate(w, r, "entries", data)
+}
+
+// Edit entry handler
+func editEntryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		id := r.FormValue("id")
+		entry := getEntry(id)
+		users := getUsers()
+		activities := getActivities()
+
+		data := struct {
+			Entry      EntryDetail
+			Users      []User
+			Activities []Activity
+		}{
+			Entry:      entry,
+			Users:      users,
+			Activities: activities,
+		}
+
+		renderTemplate(w, r, "editEntry", data)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		id := r.FormValue("id")
+		userID := r.FormValue("user_id")
+		activityID := r.FormValue("activity_id")
+		date := r.FormValue("date")
+		comment := r.FormValue("comment")
+
+		updateEntry(id, userID, activityID, date, comment)
+		http.Redirect(w, r, "/entries", http.StatusSeeOther)
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+// Edit activity handler
+func editActivityHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		id := r.FormValue("id")
+		activity := getActivity(id)
+		renderTemplate(w, r, "editActivity", activity)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		id := r.FormValue("id")
+		updateActivity(id,
+			r.FormValue("status"),
+			r.FormValue("work"),
+			r.FormValue("comment"),
+		)
+		http.Redirect(w, r, "/addActivity", http.StatusSeeOther)
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+// Edit department handler
+func editDepartmentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		id := r.FormValue("id")
+		dept := getDepartment(id)
+		renderTemplate(w, r, "editDepartment", dept)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		id := r.FormValue("id")
+		name := r.FormValue("name")
+		updateDepartment(id, name)
+		http.Redirect(w, r, "/addDepartment", http.StatusSeeOther)
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+// Delete handlers
+func deleteEntryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.FormValue("id")
+	deleteEntry(id)
+	http.Redirect(w, r, "/entries", http.StatusSeeOther)
+}
+
+func deleteActivityHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.FormValue("id")
+	deleteActivity(id)
+	http.Redirect(w, r, "/addActivity", http.StatusSeeOther)
+}
+
+func deleteDepartmentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.FormValue("id")
+	deleteDepartment(id)
+	http.Redirect(w, r, "/addDepartment", http.StatusSeeOther)
+}
+
+func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.FormValue("id")
+	deleteUser(id)
+	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
 }

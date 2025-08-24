@@ -1,31 +1,186 @@
-{{ define "title" }}Add Activity{{ end }}
+{{ define "title" }}Activity Management - Time Tracking System{{ end }}
 
 {{ define "content" }}
-<div class="card p-4 mx-auto" style="max-width: 500px;">
-  <h2 class="mb-4">Add Activity</h2>
-  <form action="/createActivity" method="POST">
-    <div class="mb-3">
-      <label for="status" class="form-label">Activity Name</label>
-      <input type="text" id="status" name="status"
-             class="form-control"
-             placeholder="e.g. Meeting"
-             required>
-    </div>
-    <div class="mb-3">
-      <label for="work" class="form-label">Is this work?</label>
-      <select id="work" name="work" class="form-select">
-        <option value="1">Yes</option>
-        <option value="0">No</option>
-      </select>
-    </div>
-    <div class="mb-3">
-      <label for="comment" class="form-label">Comment (optional)</label>
-      <input type="text" id="comment" name="comment"
-             class="form-control"
-             placeholder="Additional details...">
-    </div>
-    <button type="submit" class="btn btn-primary">Add Activity</button>
-    <a href="/" class="btn btn-secondary ms-2">Cancel</a>
-  </form>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-list-check text-primary"></i> Activity Management
+  </h1>
+  <div>
+    <a href="/dashboard" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+  </div>
 </div>
+
+<div class="row">
+  <!-- Add Activity Form -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-plus-circle text-success"></i> Add New Activity
+        </h5>
+      </div>
+      <div class="card-body">
+        <form action="/createActivity" method="POST">
+          <div class="mb-3">
+            <label for="status" class="form-label">Activity Name <span class="text-danger">*</span></label>
+            <input type="text" id="status" name="status"
+                   class="form-control"
+                   placeholder="e.g. Meeting"
+                   required>
+          </div>
+          <div class="mb-3">
+            <label for="work" class="form-label">Is this work? <span class="text-danger">*</span></label>
+            <select id="work" name="work" class="form-select" required>
+              <option value="1">Yes - Counts as working time</option>
+              <option value="0">No - Counts as break time</option>
+            </select>
+            <div class="form-text">Mark activities that count as working time.</div>
+          </div>
+          <div class="mb-3">
+            <label for="comment" class="form-label">Comment (optional)</label>
+            <input type="text" id="comment" name="comment"
+                   class="form-control"
+                   placeholder="Additional details...">
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-plus-circle"></i> Add Activity
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activities List -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-list-ul text-info"></i> Existing Activities
+        </h5>
+        <div class="d-flex gap-2">
+          <span class="badge bg-primary" id="totalActivities">{{ len .Content.Activities }} activities</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-hover" id="activitiesTable">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Activity Name</th>
+                <th>Type</th>
+                <th>Comment</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range .Content.Activities }}
+              <tr>
+                <td><span class="badge bg-secondary">{{ .ID }}</span></td>
+                <td><strong>{{ .Status }}</strong></td>
+                <td>
+                  {{ if eq .Work 1 }}
+                    <span class="badge bg-success">Work Time</span>
+                  {{ else }}
+                    <span class="badge bg-warning">Break Time</span>
+                  {{ end }}
+                </td>
+                <td>
+                  {{ if .Comment }}
+                    <span class="text-muted">{{ .Comment }}</span>
+                  {{ else }}
+                    <span class="text-muted fst-italic">No comment</span>
+                  {{ end }}
+                </td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a href="/editActivity?id={{ .ID }}" class="btn btn-outline-primary btn-sm" title="Edit Activity">
+                      <i class="bi bi-pencil"></i>
+                    </a>
+                    <button type="button" class="btn btn-outline-danger btn-sm" 
+                            onclick="deleteActivity({{ .ID }}, '{{ .Status }}')" title="Delete Activity">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>Warning:</strong> This action will also delete all time entries associated with this activity.
+        </div>
+        <p>Are you sure you want to delete the activity <strong id="deleteActivityName"></strong>?</p>
+        <p class="text-danger"><small>This action cannot be undone.</small></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="POST" style="display: inline;">
+          <input type="hidden" name="id" id="deleteActivityId">
+          <button type="submit" class="btn btn-danger">Delete Activity</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Delete functionality
+function deleteActivity(activityId, activityName) {
+  document.getElementById('deleteActivityId').value = activityId;
+  document.getElementById('deleteActivityName').textContent = activityName;
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Form validation
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.querySelector('form');
+  form.addEventListener('submit', function(e) {
+    const status = document.getElementById('status').value.trim();
+    const work = document.getElementById('work').value;
+    
+    if (!status || !work) {
+      e.preventDefault();
+      alert('Please fill in all required fields.');
+      return false;
+    }
+    
+    // Check if status contains only valid characters
+    if (!/^[a-zA-Z0-9\s\-_]+$/.test(status)) {
+      e.preventDefault();
+      alert('Activity name can only contain letters, numbers, spaces, hyphens, and underscores.');
+      return false;
+    }
+  });
+  
+  // Set up form submission for delete
+  document.getElementById('deleteForm').action = '/deleteActivity';
+  
+  // Auto-refresh activity count
+  const totalActivities = document.querySelectorAll('#activitiesTable tbody tr').length;
+  document.getElementById('totalActivities').textContent = `${totalActivities} activities`;
+});
+</script>
 {{ end }}

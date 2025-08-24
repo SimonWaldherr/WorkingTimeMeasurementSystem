@@ -1,8 +1,9 @@
 {{ define "title" }}Clock In / Clock Out{{ end }}
 
 {{ define "content" }}
-<div class="card p-4 mx-auto" style="max-width: 500px;">
-  <h2 class="mb-4">Clock In / Clock Out</h2>
+<div class="card p-4 mx-auto" style="max-width: 560px;">
+  <h2 class="mb-2">Clock In / Clock Out</h2>
+  <p class="text-secondary">Scannen Sie nacheinander Benutzer- und Aktivitäts-Barcode. Das Formular sendet automatisch.</p>
   <form id="clockForm" action="/clockInOut" method="post" autocomplete="off">
     <div class="mb-3">
       <label for="scaninput" class="form-label">Barcode Scan</label>
@@ -10,6 +11,7 @@
              class="form-control"
              placeholder="Scan USR- oder ACT-Code"
              autocomplete="off">
+      <div class="form-text">Beispiel: USR-<em>XXXX</em>-END oder ACT-<em>123</em>-END</div>
     </div>
     <div class="mb-3">
       <label for="stampkey" class="form-label">Stamp Key</label>
@@ -22,14 +24,16 @@
       <label for="activity_id" class="form-label">Select Activity</label>
       <select id="activity_id" name="activity_id" class="form-select">
         <option value="">Bitte wählen...</option>
-        {{range .Activities}}
+        {{range .Content.Activities}}
           <option value="{{.ID}}">{{.Status}}</option>
         {{end}}
       </select>
     </div>
-    <button type="submit" class="btn btn-success" id="submitBtn" disabled>Submit</button>
-    <a href="/" class="btn btn-secondary ms-2">Home</a>
-    <div id="formMessage" style="margin-top:1em"></div>
+    <div class="d-flex gap-2 align-items-center">
+      <button type="submit" class="btn btn-success" id="submitBtn" disabled><i class="bi bi-check2-circle"></i> Submit</button>
+      <a href="/" class="btn btn-outline-secondary">Home</a>
+      <div id="formMessage" class="ms-auto small"></div>
+    </div>
   </form>
 </div>
 
@@ -95,8 +99,8 @@ document.getElementById("activity_id").addEventListener("change", checkFormValid
 function showFormMessage(msg, success) {
   const el = document.getElementById("formMessage");
   el.textContent = msg;
-  el.style.color = success ? "green" : "red";
-  if(success) setTimeout(()=>{el.textContent="";}, 2000);
+  el.className = "ms-auto small " + (success ? "text-success" : "text-danger");
+  if(success) setTimeout(()=>{el.textContent=""; el.className="ms-auto small";}, 2000);
 }
   
 function sendData() {
@@ -115,10 +119,10 @@ function sendData() {
   xhr.onreadystatechange = function() {
     if(xhr.readyState === 4) {
       if(xhr.status === 200) {
-        // Erfolg: User resetten, Activity bleibt, Button deaktivieren
+  // Erfolg: User resetten, Activity bleibt, Button deaktivieren
         document.getElementById("stampkey").value = "";
         checkFormValid();
-        showFormMessage("Erfolgreich gestempelt!", true);
+  showFormMessage("Erfolgreich gestempelt!", true);
       } else {
         showFormMessage("Fehler beim Übertragen!", false);
       }
