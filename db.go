@@ -1330,3 +1330,141 @@ func getEntriesWithDetails() []EntryDetail {
     }
 	return list
 }
+
+// getEntriesWithDetailsFiltered returns filtered time entries with details
+func getEntriesWithDetailsFiltered(fromDate, toDate, department, user, activity, limit string) []EntryDetail {
+    db := getDB()
+    defer db.Close()
+
+    // Build dynamic query with filters
+    query := fmt.Sprintf(`
+        SELECT e.id, e.user_id, u.name as user_name, 
+               COALESCE(d.name, 'No Department') as department,
+               e.type_id, t.status as activity, 
+               DATE(e.timestamp) as date,
+               TIME(e.timestamp) as start_time,
+               '' as end_time,
+               0.0 as duration,
+               COALESCE(e.comment, '') as comment
+        FROM %s e
+        LEFT JOIN %s u ON e.user_id = u.id
+        LEFT JOIN %s d ON u.department_id = d.id  
+        LEFT JOIN %s t ON e.type_id = t.id
+        WHERE 1=1`, tbl("entries"), tbl("users"), tbl("departments"), tbl("type"))
+
+    var args []interface{}
+    
+    // Add date range filters
+    if fromDate != "" {
+        query += " AND DATE(e.timestamp) >= ?"
+        args = append(args, fromDate)
+    }
+    if toDate != "" {
+        query += " AND DATE(e.timestamp) <= ?"
+        args = append(args, toDate)
+    }
+    
+    // Add department filter
+    if department != "" && department != "0" {
+        query += " AND u.department_id = ?"
+        args = append(args, department)
+    }
+    
+    // Add user filter
+    if user != "" && user != "0" {
+        query += " AND e.user_id = ?"
+        args = append(args, user)
+    }
+    
+    // Add activity filter
+    if activity != "" && activity != "0" {
+        query += " AND e.type_id = ?"
+        args = append(args, activity)
+    }
+
+    query += " ORDER BY e.timestamp DESC"
+    
+    // Add limit for preview
+    if limit != "" && limit != "0" {
+        query += " LIMIT ?"
+        if limitInt, err := strconv.Atoi(limit); err == nil {
+            args = append(args, limitInt)
+        }
+    }
+
+    rows, err := db.Query(query, args...)
+    if err != nil {
+        log.Printf("Query filtered entries failed: %v", err)
+        return nil
+    }
+    defer rows.Close()
+
+    var list []EntryDetail
+    for rows.Next() {
+        var e EntryDetail
+        if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+            log.Printf("Scan filtered entry detail failed: %v", err)
+            continue
+        }
+        list = append(list, e)
+    }
+    return list
+}
+
+// getWorkHoursDataFiltered returns filtered work hours data
+func getWorkHoursDataFiltered(fromDate, toDate, user, limit string) []WorkHoursData {
+    db := getDB()
+    defer db.Close()
+
+    // Build dynamic query with filters
+    query := fmt.Sprintf(`
+        SELECT user_name, work_date, work_hours 
+        FROM %s
+        WHERE 1=1`, tbl("work_hours"))
+
+    var args []interface{}
+    
+    // Add date range filters
+    if fromDate != "" {
+        query += " AND work_date >= ?"
+        args = append(args, fromDate)
+    }
+    if toDate != "" {
+        query += " AND work_date <= ?"
+        args = append(args, toDate)
+    }
+    
+    // Add user filter
+    if user != "" {
+        query += " AND user_name = ?"
+        args = append(args, user)
+    }
+
+    query += " ORDER BY work_date DESC"
+    
+    // Add limit for preview
+    if limit != "" && limit != "0" {
+        query += " LIMIT ?"
+        if limitInt, err := strconv.Atoi(limit); err == nil {
+            args = append(args, limitInt)
+        }
+    }
+
+    rows, err := db.Query(query, args...)
+    if err != nil {
+        log.Printf("Query filtered work hours failed: %v", err)
+        return nil
+    }
+    defer rows.Close()
+
+    var list []WorkHoursData
+    for rows.Next() {
+        var wh WorkHoursData
+        if err := rows.Scan(&wh.UserName, &wh.WorkDate, &wh.WorkHours); err != nil {
+            log.Printf("Scan filtered work hours failed: %v", err)
+            continue
+        }
+        list = append(list, wh)
+    }
+    return list
+}
