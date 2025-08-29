@@ -48,6 +48,35 @@ type BulkClockRequest struct {
 	UserCodes    []string `json:"userCodes"`
 }
 
+// Calendar data structures for the calendar view
+type CalendarDay struct {
+	Day         int
+	Date        string
+	IsToday     bool
+	IsOtherMonth bool
+	Entries     []CalendarEntry
+	TotalHours  float64
+}
+
+type CalendarEntry struct {
+	Date       string
+	UserName   string
+	Activity   string
+	Hours      float64
+	IsWork     bool
+}
+
+type CalendarWeek struct {
+	Days []CalendarDay
+}
+
+type CalendarMonth struct {
+	Year      int
+	Month     time.Month
+	MonthName string
+	Weeks     []CalendarWeek
+}
+
 // loadCredentials loads the credentials from a CSV file
 func loadCredentials(filename string) (map[string]AuthUser, error) {
 	file, err := os.Open(filename)
@@ -185,6 +214,9 @@ func main() {
 
     // barcodes page
     mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
+
+    // calendar page
+    mux.Handle("/calendar", basicAuthMiddleware(users, http.HandlerFunc(calendarHandler)))
 
     // Admin downloads (CSV)
     mux.Handle("/admin/download/entries.csv", adminOnly(http.HandlerFunc(downloadEntriesCSV)))
@@ -441,6 +473,124 @@ func barcodesHandler(w http.ResponseWriter, r *http.Request) {
 		Activities: getActivities(),
 	}
 	renderTemplate(w, r, "barcodes", data)
+}
+
+// calendarHandler shows the calendar view with working times
+func calendarHandler(w http.ResponseWriter, r *http.Request) {
+	// Get filter parameters
+	selectedUserID := r.URL.Query().Get("user")
+	selectedActivityID := r.URL.Query().Get("activity")
+	monthParam := r.URL.Query().Get("month")
+	
+	// Parse month parameter or default to current month
+	var targetDate time.Time
+	if monthParam != "" {
+		if parsed, err := time.Parse("2006-01", monthParam); err == nil {
+			targetDate = parsed
+		} else {
+			targetDate = time.Now()
+		}
+	} else {
+		targetDate = time.Now()
+	}
+	
+	// Get calendar data
+	calendarData := getCalendarData(targetDate, selectedUserID, selectedActivityID)
+	
+	data := struct {
+		Users        []User
+		Activities   []Activity
+		CalendarData CalendarMonth
+		SelectedUser string
+		SelectedActivity string
+		CurrentMonth string
+		PrevMonth    string
+		NextMonth    string
+	}{
+		Users:            getUsers(),
+		Activities:       getActivities(),
+		CalendarData:     calendarData,
+		SelectedUser:     selectedUserID,
+		SelectedActivity: selectedActivityID,
+		CurrentMonth:     targetDate.Format("2006-01"),
+		PrevMonth:        targetDate.AddDate(0, -1, 0).Format("2006-01"),
+		NextMonth:        targetDate.AddDate(0, 1, 0).Format("2006-01"),
+	}
+	renderTemplate(w, r, "calendar", data)
+}
+
+// getCalendarData generates calendar data for a specific month with optional filters
+func getCalendarData(targetDate time.Time, userFilter, activityFilter string) CalendarMonth {
+	year := targetDate.Year()
+	month := targetDate.Month()
+	
+	// Get first day of month
+	firstDay := time.Date(year, month, 1, 0, 0, 0, 0, targetDate.Location())
+	// Get last day of month
+	lastDay := firstDay.AddDate(0, 1, -1)
+	
+	// Get first day of calendar (may be in previous month)
+	// Start from Monday (1) to Sunday (0) 
+	calendarStart := firstDay
+	for calendarStart.Weekday() != time.Monday {
+		calendarStart = calendarStart.AddDate(0, 0, -1)
+	}
+	
+	// Get last day of calendar (may be in next month)
+	calendarEnd := lastDay
+	for calendarEnd.Weekday() != time.Sunday {
+		calendarEnd = calendarEnd.AddDate(0, 0, 1)
+	}
+	
+	// Get entries for the calendar period
+	entries := getCalendarEntries(calendarStart, calendarEnd, userFilter, activityFilter)
+	
+	// Group entries by date
+	entriesByDate := make(map[string][]CalendarEntry)
+	for _, entry := range entries {
+		dateKey := entry.Date[:10] // Extract YYYY-MM-DD part
+		entriesByDate[dateKey] = append(entriesByDate[dateKey], entry)
+	}
+	
+	// Build calendar structure
+	var weeks []CalendarWeek
+	current := calendarStart
+	
+	for current.Before(calendarEnd.AddDate(0, 0, 1)) {
+		week := CalendarWeek{}
+		
+		// Build 7 days for this week
+		for i := 0; i < 7; i++ {
+			dateKey := current.Format("2006-01-02")
+			dayEntries := entriesByDate[dateKey]
+			
+			totalHours := 0.0
+			for _, entry := range dayEntries {
+				totalHours += entry.Hours
+			}
+			
+			day := CalendarDay{
+				Day:          current.Day(),
+				Date:         dateKey,
+				IsToday:      current.Format("2006-01-02") == time.Now().Format("2006-01-02"),
+				IsOtherMonth: current.Month() != month,
+				Entries:      dayEntries,
+				TotalHours:   totalHours,
+			}
+			
+			week.Days = append(week.Days, day)
+			current = current.AddDate(0, 0, 1)
+		}
+		
+		weeks = append(weeks, week)
+	}
+	
+	return CalendarMonth{
+		Year:      year,
+		Month:     month,
+		MonthName: month.String(),
+		Weeks:     weeks,
+	}
 }
 
 // createActivityHandler processes adding a new activity
