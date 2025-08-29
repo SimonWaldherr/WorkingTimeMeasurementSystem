@@ -14,7 +14,7 @@ import (
 	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -162,7 +162,7 @@ func getDB() *sql.DB {
 			mssqlServer, mssqlDB, mssqlUser, mssqlPass, mssqlPort,
 		)
 	default: // sqlite
-		driver = "sqlite3"
+		driver = "sqlite"
 		dsn = resolveSQLitePath()
 		log.Printf("[DB] Opening SQLite dsn=%s", dsn)
 	}
