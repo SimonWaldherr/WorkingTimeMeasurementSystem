@@ -700,11 +700,25 @@ func parseDBTimeInLoc(s string, loc *time.Location) time.Time {
 	if t, err := time.ParseInLocation("2006-01-02 15:04:05", s, loc); err == nil {
 		return t
 	}
+	// Support HTML datetime-local without seconds
+	if t, err := time.ParseInLocation("2006-01-02T15:04", s, loc); err == nil {
+		return t
+	}
+	// Support date-only values
+	if t, err := time.ParseInLocation("2006-01-02", s, loc); err == nil {
+		return t
+	}
 	// try without location
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
 		return t.In(loc)
 	}
 	if t, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
+		return t.In(loc)
+	}
+	if t, err := time.Parse("2006-01-02T15:04", s); err == nil {
+		return t.In(loc)
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
 		return t.In(loc)
 	}
 	return time.Now().In(loc)

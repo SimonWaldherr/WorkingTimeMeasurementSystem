@@ -119,7 +119,7 @@
             <tbody>
               {{ range .Content.TimeTrends }}
               <tr>
-                <td><small>{{ .Date }}</small></td>
+                <td><small>{{ fmtDT .Date }}</small></td>
                 <td><span class="text-success fw-bold">{{ printf "%.1f" .TotalHours }}</span></td>
                 <td><span class="badge bg-info">{{ .ActiveUsers }}</span></td>
                 <td><span class="badge bg-success">{{ .WorkEntries }}</span></td>
@@ -163,7 +163,7 @@
                 <td><span class="badge bg-secondary">{{ .Department }}</span></td>
                 <td><span class="text-success fw-bold">{{ printf "%.1f" .TotalWorkHours }}</span></td>
                 <td><span class="text-warning">{{ printf "%.1f" .TotalBreakHours }}</span></td>
-                <td><small>{{ .LastActivity }}</small></td>
+                <td><small>{{ fmtDT .LastActivity }}</small></td>
                 <td>
                   {{ if eq .Status "Work" }}
                     <span class="badge bg-success">Working</span>

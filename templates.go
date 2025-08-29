@@ -3,18 +3,74 @@ package main
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 //go:embed templates/*.html
 var templatesFS embed.FS
 
 var base *template.Template
+var tenantCfgCache sync.Map // host -> TenantConfig
+
+type TenantConfig struct {
+	DateTimeFormat string `json:"dateTimeFormat"`
+}
+
+func loadTenantConfig(host string) TenantConfig {
+	if host == "" {
+		return TenantConfig{DateTimeFormat: "YYYY-MM-DD HH:MM:SS"}
+	}
+	if v, ok := tenantCfgCache.Load(host); ok {
+		return v.(TenantConfig)
+	}
+	safe := strings.ToLower(strings.ReplaceAll(host, "/", "-"))
+	tenantDir := getenv("TENANT_DIR", "tenant")
+	path := filepath.Join(tenantDir, safe, "config.json")
+	cfg := TenantConfig{DateTimeFormat: "YYYY-MM-DD HH:MM:SS"}
+	if data, err := os.ReadFile(path); err == nil {
+		var tm map[string]any
+		if json.Unmarshal(data, &tm) == nil {
+			if v, ok := tm["dateTimeFormat"].(string); ok && strings.TrimSpace(v) != "" {
+				cfg.DateTimeFormat = v
+			}
+		}
+	}
+	tenantCfgCache.Store(host, cfg)
+	return cfg
+}
+
+// Map friendly tokens (YYYY, DD, HH:MM[:SS]) to Go's time layout tokens.
+func goLayoutFromTenant(spec string) string {
+	if strings.TrimSpace(spec) == "" {
+		spec = "YYYY-MM-DD HH:MM:SS"
+	}
+	s := spec
+	// Handle common time patterns first to disambiguate minutes (MM) vs month (MM)
+	s = strings.ReplaceAll(s, "HH:MM:SS", "15:04:05")
+	s = strings.ReplaceAll(s, "HH:MM", "15:04")
+	s = strings.ReplaceAll(s, "hh:MM:SS", "03:04:05")
+	s = strings.ReplaceAll(s, "hh:MM", "03:04")
+	// Now map remaining date parts
+	s = strings.ReplaceAll(s, "YYYY", "2006")
+	s = strings.ReplaceAll(s, "YY", "06")
+	s = strings.ReplaceAll(s, "DD", "02")
+	s = strings.ReplaceAll(s, "MM", "01") // month
+	// Also support lowercase time tokens if used
+	s = strings.ReplaceAll(s, "HH", "15")
+	s = strings.ReplaceAll(s, "hh", "03")
+	s = strings.ReplaceAll(s, "mm", "04")
+	s = strings.ReplaceAll(s, "SS", "05")
+	s = strings.ReplaceAll(s, "ss", "05")
+	return s
+}
 
 func init() {
 	const templatesDir = "templates"
@@ -87,16 +143,37 @@ func renderTemplate(w http.ResponseWriter, r *http.Request, page string, data in
 		return
 	}
 
+	// Determine tenant and date-time format
+	host := ""
+	if r != nil {
+		host = r.Host
+		if idx := strings.IndexByte(host, ':'); idx >= 0 {
+			host = host[:idx]
+		}
+	}
+	cfg := loadTenantConfig(host)
+	layout := goLayoutFromTenant(cfg.DateTimeFormat)
+	// Provide formatting helper; parse DB string robustly
+	tmpl = tmpl.Funcs(template.FuncMap{
+		"fmtDT": func(s string) string {
+			if strings.TrimSpace(s) == "" {
+				return ""
+			}
+			t := parseDBTimeInLoc(s, time.Local)
+			return t.Format(layout)
+		},
+	})
+
 	pageFile := path.Join("templates", page+".html")
 
 	// Tenant-aware overrides: tenant/<host>/templates/{base,header,footer,page}.html
 	var safeHost string
 	if r != nil {
-		host := r.Host
-		if idx := strings.IndexByte(host, ':'); idx >= 0 {
-			host = host[:idx]
+		h := r.Host
+		if idx := strings.IndexByte(h, ':'); idx >= 0 {
+			h = h[:idx]
 		}
-		safeHost = strings.ToLower(strings.ReplaceAll(host, "/", "-"))
+		safeHost = strings.ToLower(strings.ReplaceAll(h, "/", "-"))
 	}
 
 	// Helper to test file existence
@@ -174,6 +251,26 @@ func renderHTMLTable(w http.ResponseWriter, r *http.Request, title string, td Ta
 		http.Error(w, "template clone error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Attach fmtDT also for generic tables
+	host := ""
+	if r != nil {
+		host = r.Host
+		if idx := strings.IndexByte(host, ':'); idx >= 0 {
+			host = host[:idx]
+		}
+	}
+	cfg := loadTenantConfig(host)
+	layout := goLayoutFromTenant(cfg.DateTimeFormat)
+	tmpl = tmpl.Funcs(template.FuncMap{
+		"fmtDT": func(s string) string {
+			if strings.TrimSpace(s) == "" {
+				return ""
+			}
+			t := parseDBTimeInLoc(s, time.Local)
+			return t.Format(layout)
+		},
+	})
 
 	pageFile := path.Join("templates", "table.html")
 	// Tenant-aware overrides similar to renderTemplate

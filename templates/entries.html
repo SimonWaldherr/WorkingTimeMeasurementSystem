@@ -88,7 +88,7 @@
                 <span class="badge bg-secondary">{{ .Activity }}</span>
               {{ end }}
             </td>
-            <td><small>{{ .Date }}</small></td>
+            <td><small>{{ fmtDT .Date }}</small></td>
             <td>
               <span class="text-primary fw-bold">{{ printf "%.2f" .Duration }}</span>
             </td>

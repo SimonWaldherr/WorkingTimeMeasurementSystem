@@ -55,10 +55,10 @@
             <tbody>
               {{ range .Content.Entries }}
               <tr>
-                <td>{{ .Date }}</td>
+                <td>{{ fmtDT .Date }}</td>
                 <td>{{ .Activity }}</td>
-                <td>{{ .Start }}</td>
-                <td>{{ .End }}</td>
+                <td>{{ fmtDT .Start }}</td>
+                <td>{{ fmtDT .End }}</td>
                 <td>{{ printf "%.2f" .Duration }}</td>
                 <td>{{ .Comment }}</td>
               </tr>

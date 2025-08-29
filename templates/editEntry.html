@@ -58,7 +58,7 @@
               <label for="date" class="form-label">Date & Time <span class="text-danger">*</span></label>
               <input type="datetime-local" class="form-control" id="date" name="date" 
                      value="{{ .Content.Entry.Date }}" required>
-              <div class="form-text">Current: {{ .Content.Entry.Date }}</div>
+              <div class="form-text">Current: {{ fmtDT .Content.Entry.Date }}</div>
             </div>
             
             <!-- Duration Display -->

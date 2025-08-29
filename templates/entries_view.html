@@ -14,8 +14,8 @@
         <td>{{.ID}}</td>
         <td>{{.UserName}}</td>
         <td>{{.Activity}}</td>
-        <td>{{.Start}}</td>
-        <td>{{.End}}</td>
+        <td>{{ fmtDT .Start }}</td>
+        <td>{{ fmtDT .End }}</td>
         <td>
             <form action="/entries_view" method="post" style="display:inline;">
                 <input type="hidden" name="id" value="{{.ID}}">
