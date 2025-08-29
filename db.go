@@ -1331,6 +1331,71 @@ func getEntriesWithDetails() []EntryDetail {
 	return list
 }
 
+// getCalendarEntries returns calendar entries for the specified date range with optional filters
+func getCalendarEntries(startDate, endDate time.Time, userFilter, activityFilter string) []CalendarEntry {
+	db := getDB()
+	defer db.Close()
+
+	// Build query with optional filters
+	baseQuery := fmt.Sprintf(`
+		SELECT 
+			e.date,
+			u.name as user_name,
+			t.status as activity,
+			t.work as is_work,
+			COALESCE(
+				(JULIANDAY(
+					COALESCE(
+						(SELECT MIN(next_e.date) FROM %s next_e 
+						 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
+						datetime('now')
+					)
+				) - JULIANDAY(e.date)) * 24, 0
+			) as hours
+		FROM %s e
+		INNER JOIN %s u ON u.id = e.user_id
+		INNER JOIN %s t ON t.id = e.type_id
+		WHERE e.date >= ? AND e.date <= ?`,
+		tbl("entries"), tbl("entries"), tbl("users"), tbl("type"))
+
+	var args []interface{}
+	args = append(args, startDate.Format("2006-01-02 15:04:05"), endDate.Format("2006-01-02 23:59:59"))
+
+	// Add user filter if specified
+	if userFilter != "" {
+		baseQuery += " AND u.id = ?"
+		args = append(args, userFilter)
+	}
+
+	// Add activity filter if specified
+	if activityFilter != "" {
+		baseQuery += " AND t.id = ?"
+		args = append(args, activityFilter)
+	}
+
+	baseQuery += " ORDER BY e.date"
+
+	rows, err := db.Query(baseQuery, args...)
+	if err != nil {
+		log.Printf("Query calendar entries failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var entries []CalendarEntry
+	for rows.Next() {
+		var entry CalendarEntry
+		var isWork int
+		if err := rows.Scan(&entry.Date, &entry.UserName, &entry.Activity, &isWork, &entry.Hours); err != nil {
+			log.Printf("Scan calendar entry failed: %v", err)
+			continue
+		}
+		entry.IsWork = isWork == 1
+		entries = append(entries, entry)
+	}
+
+	return entries
+
 // getEntriesWithDetailsFiltered returns filtered time entries with details
 func getEntriesWithDetailsFiltered(fromDate, toDate, department, user, activity, limit string) []EntryDetail {
     db := getDB()

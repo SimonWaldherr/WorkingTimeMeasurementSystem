@@ -1,0 +1,226 @@
+{{ define "title" }}Calendar - Time Tracking System{{ end }}
+
+{{ define "content" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-calendar3 text-primary"></i> Working Time Calendar
+  </h1>
+  <div>
+    <a href="/" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Home
+    </a>
+  </div>
+</div>
+
+<!-- Filters and Navigation -->
+<div class="card mb-4">
+  <div class="card-header">
+    <h5 class="card-title mb-0">
+      <i class="bi bi-funnel text-info"></i> Filters & Navigation
+    </h5>
+  </div>
+  <div class="card-body">
+    <form method="GET" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label for="month" class="form-label">Month</label>
+        <div class="input-group">
+          <a href="?month={{ .Content.PrevMonth }}&user={{ .Content.SelectedUser }}&activity={{ .Content.SelectedActivity }}" 
+             class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+          <input type="month" class="form-control" id="month" name="month" 
+                 value="{{ .Content.CurrentMonth }}" onchange="this.form.submit()">
+          <a href="?month={{ .Content.NextMonth }}&user={{ .Content.SelectedUser }}&activity={{ .Content.SelectedActivity }}" 
+             class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </div>
+      </div>
+      
+      <div class="col-md-3">
+        <label for="user-filter" class="form-label">Filter by User</label>
+        <select id="user-filter" name="user" class="form-select" onchange="this.form.submit()">
+          <option value="">All Users</option>
+          {{ range .Content.Users }}
+          <option value="{{ .ID }}" {{ if eq (printf "%d" .ID) $.Content.SelectedUser }}selected{{ end }}>
+            {{ .Name }}
+          </option>
+          {{ end }}
+        </select>
+      </div>
+      
+      <div class="col-md-3">
+        <label for="activity-filter" class="form-label">Filter by Activity</label>
+        <select id="activity-filter" name="activity" class="form-select" onchange="this.form.submit()">
+          <option value="">All Activities</option>
+          {{ range .Content.Activities }}
+          <option value="{{ .ID }}" {{ if eq (printf "%d" .ID) $.Content.SelectedActivity }}selected{{ end }}>
+            {{ .Status }}
+          </option>
+          {{ end }}
+        </select>
+      </div>
+      
+      <div class="col-md-3">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-search"></i> Apply Filters
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Calendar View -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="card-title mb-0">
+      <i class="bi bi-calendar-month text-success"></i> 
+      {{ .Content.CalendarData.MonthName }} {{ .Content.CalendarData.Year }}
+    </h5>
+    <div class="text-muted">
+      <small>Total hours are shown for each day</small>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover mb-0 calendar-table">
+        <thead class="table-light">
+          <tr>
+            <th class="text-center">Monday</th>
+            <th class="text-center">Tuesday</th>
+            <th class="text-center">Wednesday</th>
+            <th class="text-center">Thursday</th>
+            <th class="text-center">Friday</th>
+            <th class="text-center">Saturday</th>
+            <th class="text-center">Sunday</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Content.CalendarData.Weeks }}
+          <tr>
+            {{ range .Days }}
+            <td class="calendar-day {{ if .IsToday }}today{{ end }} {{ if .IsOtherMonth }}other-month{{ end }}" 
+                data-date="{{ .Date }}">
+              <div class="d-flex justify-content-between align-items-start mb-1">
+                <span class="day-number {{ if .IsToday }}fw-bold{{ end }}">{{ .Day }}</span>
+                {{ if gt .TotalHours 0.0 }}
+                <span class="badge bg-primary">{{ printf "%.1f" .TotalHours }}h</span>
+                {{ end }}
+              </div>
+              
+              {{ if .Entries }}
+              <div class="entries-list">
+                {{ range .Entries }}
+                <div class="entry-item mb-1">
+                  <small class="d-block">
+                    <i class="bi {{ if .IsWork }}bi-briefcase text-success{{ else }}bi-pause-circle text-warning{{ end }}"></i>
+                    <strong>{{ .UserName }}</strong>
+                  </small>
+                  <small class="d-block text-muted">
+                    {{ .Activity }}
+                    {{ if gt .Hours 0.0 }}({{ printf "%.1f" .Hours }}h){{ end }}
+                  </small>
+                </div>
+                {{ end }}
+              </div>
+              {{ end }}
+            </td>
+            {{ end }}
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <h6 class="card-title">Legend</h6>
+        <div class="row">
+          <div class="col-md-3">
+            <i class="bi bi-briefcase text-success"></i> Work Activity
+          </div>
+          <div class="col-md-3">
+            <i class="bi bi-pause-circle text-warning"></i> Break Activity
+          </div>
+          <div class="col-md-3">
+            <span class="badge bg-primary">X.Xh</span> Total Hours
+          </div>
+          <div class="col-md-3">
+            <span class="today-indicator"></span> Today
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.calendar-table td {
+  height: 120px;
+  width: 14.28%;
+  vertical-align: top;
+  position: relative;
+}
+
+.calendar-day {
+  padding: 8px;
+}
+
+.calendar-day.today {
+  background-color: rgba(13, 110, 253, 0.1);
+  border: 2px solid #0d6efd;
+}
+
+.calendar-day.other-month {
+  background-color: #f8f9fa;
+  color: #6c757d;
+}
+
+.day-number {
+  font-size: 1.1rem;
+}
+
+.entries-list {
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.entry-item {
+  padding: 2px 4px;
+  border-left: 3px solid #dee2e6;
+  margin-bottom: 2px;
+}
+
+.entry-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.today-indicator::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-color: rgba(13, 110, 253, 0.1);
+  border: 2px solid #0d6efd;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+@media (max-width: 768px) {
+  .calendar-table td {
+    height: 100px;
+    font-size: 0.875rem;
+  }
+  
+  .day-number {
+    font-size: 1rem;
+  }
+}
+</style>
+
+{{ end }}
