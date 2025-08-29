@@ -1,0 +1,51 @@
+[Unit]
+Description=Working Time Measurement System
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust user/group to your environment
+User=workingtime
+Group=workingtime
+
+# Set where the app will run (logs, sqlite DB, static/tenant, etc.)
+WorkingDirectory=/opt/workingtime
+
+# Absolute path to the compiled binary
+ExecStart=/usr/local/bin/workingtime
+
+# Built-in defaults (can be overridden via EnvironmentFile below)
+Environment=HOST=0.0.0.0
+Environment=PORT=8083
+Environment=DB_BACKEND=sqlite
+Environment=SQLITE_PATH=/opt/workingtime/time_tracking.db
+Environment=CREDENTIALS_FILE=/opt/workingtime/credentials.csv
+Environment=SESSION_SECRET=change-me-very-secret
+Environment=SESSION_DURATION_MINUTES=60
+Environment=STATIC_DIR=/opt/workingtime/static
+Environment=TENANT_DIR=/opt/workingtime/tenant
+Environment=TEMPLATES_DIR=/opt/workingtime/templates
+
+# MSSQL (used when DB_BACKEND=mssql)
+Environment=MSSQL_SERVER=sql-cluster-05
+Environment=MSSQL_DATABASE=wtm
+Environment=MSSQL_USER=johndoe
+Environment=MSSQL_PASSWORD=secret
+Environment=MSSQL_PORT=1433
+Environment=DB_AUTO_MIGRATE=0
+
+# Optional external override file (if present). Create and edit to customize.
+EnvironmentFile=-/etc/default/workingtime
+
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=15s
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
