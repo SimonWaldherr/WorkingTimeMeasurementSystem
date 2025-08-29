@@ -4,16 +4,9 @@
 <section class="p-5 mb-4 bg-white rounded-3 shadow-sm">
   <div class="container py-3 text-center">
     <h1 class="display-6 mb-2">Time Tracking System</h1>
-    <p class="lead text-secondary mb-4">Mitarbeitende und Aktivitäten verwalten, Zeiten erfassen und Barcodes drucken.</p>
-    {{ if .Content.Current }}
-    <div class="alert alert-info d-inline-block">
-      <i class="bi bi-person-check"></i>
-      Your current status: <strong>{{ .Content.Current.Status }}</strong>
-      <span class="ms-2 text-muted">since {{ .Content.Current.Since }}</span>
-    </div>
-    {{ end }}
+    <p class="lead text-secondary mb-4"></p>
     <div class="d-flex flex-wrap justify-content-center gap-3">
-      <a href="/clockInOutForm" class="btn btn-success btn-lg">
+      <a href="/passwordStamp" class="btn btn-success btn-lg">
         <i class="bi bi-person-badge"></i> Ein-/Ausstempeln
       </a>
       {{ if .Meta.IsAdmin }}
@@ -24,9 +17,6 @@
         <i class="bi bi-list-ul"></i> Entries
       </a>
       {{ end }}
-      <a href="/barcodes" class="btn btn-warning btn-lg">
-        <i class="bi bi-upc-scan"></i> Barcodes
-      </a>
     </div>
   </div>
 </section>
@@ -117,23 +107,6 @@
   </div>
   {{ end }}
 
-  <!-- Barcodes Section -->
-  <div class="col-md-6 mb-4">
-    <div class="card h-100 border-warning">
-      <div class="card-header bg-warning text-dark">
-        <h5 class="card-title mb-0">
-          <i class="bi bi-upc-scan"></i> Barcode Management
-        </h5>
-      </div>
-      <div class="card-body">
-        <p class="card-text text-secondary">Generate and print barcode labels for users and activities.</p>
-        <a href="/barcodes" class="btn btn-warning">
-          <i class="bi bi-upc-scan"></i> Open Barcodes
-        </a>
-      </div>
-    </div>
-  </div>
-
   <!-- Quick Status -->
   <div class="col-md-6 mb-4">
     <div class="card h-100 border-info">
@@ -143,14 +116,7 @@
         </h5>
       </div>
       <div class="card-body">
-        {{ if .Content.Current }}
-        <div class="mb-2">
-          <span class="badge bg-info">{{ .Content.Current.Status }}</span>
-          <small class="text-muted ms-2">since {{ .Content.Current.Since }}</small>
-        </div>
-        {{ else }}
         <p class="card-text text-secondary">Check current work status and hours overview.</p>
-        {{ end }}
         <div class="d-grid gap-2">
           <a href="/current_status" class="btn btn-outline-info btn-sm">
             <i class="bi bi-person-check"></i> Current Status
@@ -211,3 +177,4 @@
 </div>
 {{ end }}
 {{ end }}
+

@@ -31,7 +31,7 @@
               <select class="form-select" id="user_id" name="user_id" required>
                 <option value="">Select User</option>
                 {{ range .Content.Users }}
-                <option value="{{ .ID }}" {{ if eq .ID $.Content.Entry.UserName }}selected{{ end }}>
+                <option value="{{ .ID }}" {{ if eq .ID $.Content.Entry.UserID }}selected{{ end }}>
                   {{ .Name }} ({{ .Email }})
                 </option>
                 {{ end }}
@@ -45,7 +45,7 @@
               <select class="form-select" id="activity_id" name="activity_id" required>
                 <option value="">Select Activity</option>
                 {{ range .Content.Activities }}
-                <option value="{{ .ID }}" {{ if eq .Status $.Content.Entry.Activity }}selected{{ end }}>
+                <option value="{{ .ID }}" {{ if eq .ID $.Content.Entry.ActivityID }}selected{{ end }}>
                   {{ .Status }} {{ if .Comment }}({{ .Comment }}){{ end }}
                 </option>
                 {{ end }}
@@ -153,6 +153,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {{ end }}
-
-
 

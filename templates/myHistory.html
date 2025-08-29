@@ -9,11 +9,11 @@
         <form method="POST" action="/myHistory">
           <div class="mb-3">
             <label class="form-label">Email</label>
-            <input type="email" class="form-control" name="email" required value="{{ if .Content.User }}{{ .Content.User.Email }}{{ end }}">
+            <input type="email" class="form-control" name="email" {{ if not .Meta.IsAuthenticated }}required{{ end }} value="{{ if .Content.User }}{{ .Content.User.Email }}{{ end }}">
           </div>
           <div class="mb-3">
             <label class="form-label">Password</label>
-            <input type="password" class="form-control" name="pwd" {{ if .Content.User }}placeholder="Re-enter to refresh"{{ end }} required>
+            <input type="password" class="form-control" name="pwd" {{ if not .Meta.IsAuthenticated }}required{{ end }} {{ if .Content.User }}placeholder="Re-enter to refresh"{{ end }}>
           </div>
           <div class="mb-3">
             <label class="form-label">From</label>
@@ -74,4 +74,3 @@
   </div>
 </div>
 {{ end }}
-
