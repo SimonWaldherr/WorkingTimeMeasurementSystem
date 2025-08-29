@@ -1472,30 +1472,20 @@ func getEntriesWithDetails() []EntryDetail {
 	db := getDB()
 	defer db.Close()
 
+	// Select next event end_time without doing duration math in SQL to avoid
+	// timezone differences between SQLite datetime('now') (UTC) and local times.
 	query := fmt.Sprintf(`
-        SELECT 
-            e.id,
-            u.id as user_id,
-            u.name as user_name,
-            COALESCE(d.name, 'No Department') as department,
-            t.id as activity_id,
-            t.status as activity,
-            e.date,
-            e.date as start_time,
-			COALESCE(
-				(SELECT MIN(next_e.date) FROM %s next_e 
-				 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
-				datetime('now')
-			) as end_time,
-			COALESCE(
-				(JULIANDAY(
-					COALESCE(
-						(SELECT MIN(next_e.date) FROM %s next_e 
-						 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
-						datetime('now')
-					)
-				) - JULIANDAY(e.date)) * 24, 0
-			) as duration,
+		SELECT 
+			e.id,
+			u.id as user_id,
+			u.name as user_name,
+			COALESCE(d.name, 'No Department') as department,
+			t.id as activity_id,
+			t.status as activity,
+			e.date,
+			e.date as start_time,
+			(SELECT MIN(next_e.date) FROM %s next_e 
+			 WHERE next_e.user_id = e.user_id AND next_e.date > e.date) as end_time,
 			COALESCE(e.comment, '') as comment
 		FROM %s e
 		JOIN %s u ON e.user_id = u.id
@@ -1503,7 +1493,7 @@ func getEntriesWithDetails() []EntryDetail {
 		JOIN %s t ON e.type_id = t.id
 		ORDER BY e.date DESC
 		LIMIT 1000
-	`, tbl("entries"), tbl("entries"), tbl("entries"), tbl("users"), tbl("departments"), tbl("type"))
+	`, tbl("entries"), tbl("entries"), tbl("users"), tbl("departments"), tbl("type"))
 
 	rows, err := db.Query(query)
 	if err != nil {
@@ -1515,10 +1505,26 @@ func getEntriesWithDetails() []EntryDetail {
 	var list []EntryDetail
 	for rows.Next() {
 		var e EntryDetail
-		if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+		var end sql.NullString
+		if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &end, &e.Comment); err != nil {
 			log.Printf("Scan entry detail failed: %v", err)
 			continue
 		}
+		// Compute duration in Go to respect local time and avoid SQLite now()/UTC quirks
+		startTs := parseDBTimeInLoc(e.Start, time.Local)
+		var endTs time.Time
+		if end.Valid && strings.TrimSpace(end.String) != "" {
+			endTs = parseDBTimeInLoc(end.String, time.Local)
+			e.End = end.String
+		} else {
+			endTs = time.Now()
+			e.End = ""
+		}
+		dur := endTs.Sub(startTs).Hours()
+		if dur < 0 {
+			dur = 0
+		}
+		e.Duration = dur
 		list = append(list, e)
 	}
 	return list
