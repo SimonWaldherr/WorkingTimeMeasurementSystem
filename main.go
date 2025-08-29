@@ -80,26 +80,48 @@ var store = sessions.NewCookieStore([]byte("change-me-very-secret"))
 // Session duration in minutes
 const sessionDuration = 30
 
-func basicAuthMiddleware(users map[string]AuthUser, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, _ := store.Get(r, "session")
-		username, ok := session.Values["username"].(string)
-		if !ok || username == "" {
-			// not logged in: redirect to login page
-			http.Redirect(w, r, "/login", http.StatusFound)
-			return
-		}
-		_, exists := users[username]
-		if !exists {
-			// user not found in CSV: force logout
-			session.Options.MaxAge = -1
-			session.Save(r, w)
-			http.Redirect(w, r, "/login", http.StatusFound)
-			return
-		}
-		// Optionally: Session-Timeout erzwingen (optional, Cookie-Timeout reicht meist)
-		next.ServeHTTP(w, r)
-	})
+// resolve DB user from session; falls back to matching by username
+func currentDBUserFromSession(r *http.Request) (User, bool) {
+    session, _ := store.Get(r, "session")
+    if idVal, ok := session.Values["db_user_id"]; ok {
+        switch v := idVal.(type) {
+        case int:
+            return getUser(strconv.Itoa(v)), true
+        case int64:
+            return getUser(strconv.Itoa(int(v))), true
+        case string:
+            return getUser(v), true
+        }
+    }
+    if uname, ok := session.Values["username"].(string); ok && uname != "" {
+        if u, ok2 := getUserByName(uname); ok2 {
+            return u, true
+        }
+    }
+    return User{}, false
+}
+
+func humanizeDuration(d time.Duration) string {
+    if d < 0 { d = -d }
+    hrs := int(d.Hours())
+    mins := int(d.Minutes()) % 60
+    if hrs > 0 {
+        return strconv.Itoa(hrs) + "h " + strconv.Itoa(mins) + "m"
+    }
+    return strconv.Itoa(mins) + "m"
+}
+
+func basicAuthMiddleware(_ map[string]AuthUser, next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        session, _ := store.Get(r, "session")
+        username, ok := session.Values["username"].(string)
+        if !ok || username == "" {
+            http.Redirect(w, r, "/login", http.StatusFound)
+            return
+        }
+        // Accept either CSV or DB-backed users; role is carried in session
+        next.ServeHTTP(w, r)
+    })
 }
 
 
@@ -212,16 +234,22 @@ func main() {
 
 // indexHandler shows the home page
 func indexHandler(w http.ResponseWriter, r *http.Request) {
-	users := getUsers()
-	activities := getActivities()
-	data := struct {
-		Users      []User
-		Activities []Activity
-	}{
-		Users:      users,
-		Activities: activities,
-	}
-	renderTemplate(w, r, "index", data)
+    users := getUsers()
+    activities := getActivities()
+    // current user status (if we can resolve a DB user)
+    type cur struct{ Status, Since string }
+    var current *cur
+    if u, ok := currentDBUserFromSession(r); ok {
+        if st, at, ok2 := getCurrentStatusForUserID(u.ID); ok2 {
+            current = &cur{Status: st, Since: humanizeDuration(time.Since(at))}
+        }
+    }
+    data := struct {
+        Users      []User
+        Activities []Activity
+        Current    *cur
+    }{users, activities, current}
+    renderTemplate(w, r, "index", data)
 }
 
 func loginHandler(users map[string]AuthUser) http.HandlerFunc {
@@ -251,6 +279,8 @@ func loginHandler(users map[string]AuthUser) http.HandlerFunc {
                 // prefer displaying the DB user's name
                 session.Values["username"] = u.Name
                 session.Values["role"] = u.Role
+                session.Values["db_user_id"] = u.ID
+                session.Values["db_user_email"] = u.Email
                 session.Options = &sessions.Options{Path: "/", MaxAge: sessionDuration * 60, HttpOnly: true}
                 session.Save(r, w)
                 http.Redirect(w, r, "/", http.StatusFound)
@@ -262,11 +292,15 @@ func loginHandler(users map[string]AuthUser) http.HandlerFunc {
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
-	// Löscht die Session und leitet zur Login-Seite weiter
-	session, _ := store.Get(r, "session")
-	session.Options.MaxAge = -1 // Löscht das Cookie
-	session.Save(r, w)
-	http.Redirect(w, r, "/login", http.StatusFound)
+    // Clear session for both CSV and DB users and redirect to login
+    session, _ := store.Get(r, "session")
+    // reset values and set delete cookie explicitly
+    session.Values = map[interface{}]interface{}{}
+    session.Options = &sessions.Options{Path: "/", MaxAge: -1, HttpOnly: true}
+    _ = session.Save(r, w)
+    // additionally ensure cookie deletion
+    http.SetCookie(w, &http.Cookie{Name: "session", Path: "/", MaxAge: -1})
+    http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 // adminOnly middleware: requires logged-in CSV user with role=admin
@@ -296,18 +330,23 @@ type Entry struct {
 
 // clockInOutForm shows the manual clock in/out form
 func clockInOutForm(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		users := getUsers()
-		activities := getActivities()
-		data := struct {
-			Users      []User
-			Activities []Activity
-		}{
-			Users:      users,
-			Activities: activities,
-		}
-		renderTemplate(w, r, "clockInOutForm", data)
-	}
+    if r.Method == http.MethodGet {
+        users := getUsers()
+        activities := getActivities()
+        type cur struct{ Status, Since string }
+        var current *cur
+        if u, ok := currentDBUserFromSession(r); ok {
+            if st, at, ok2 := getCurrentStatusForUserID(u.ID); ok2 {
+                current = &cur{Status: st, Since: humanizeDuration(time.Since(at))}
+            }
+        }
+        data := struct {
+            Users      []User
+            Activities []Activity
+            Current    *cur
+        }{users, activities, current}
+        renderTemplate(w, r, "clockInOutForm", data)
+    }
 }
 
 // addUserHandler shows the add-user page
@@ -453,43 +492,102 @@ func clockInOut(w http.ResponseWriter, r *http.Request) {
 
 // passwordStampHandler allows stamping by email+password, then choosing activity buttons
 func passwordStampHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		// show login form
-		renderTemplate(w, r, "passwordStamp", nil)
-		return
-	case http.MethodPost:
-		email := r.FormValue("email")
-		pwd := r.FormValue("pwd")
-		activityID := r.FormValue("activity_id")
-		u, ok := getUserByEmail(email)
-		if !ok || u.Password == "" {
-			renderTemplate(w, r, "passwordStamp", map[string]any{"Error": "Unbekannte E-Mail oder kein Passwort gesetzt."})
-			return
-		}
-		// verify password
-		if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(pwd)); err != nil {
-			renderTemplate(w, r, "passwordStamp", map[string]any{"Error": "Falsches Passwort."})
-			return
-		}
-		if activityID == "" {
-			// show activities as buttons
-			activities := getActivities()
-			renderTemplate(w, r, "passwordStamp", map[string]any{
-				"User":       u,
-				"Activities": activities,
-				"Pwd":        pwd, // keep for next post to avoid retyping
-			})
-			return
-		}
-		// stamp entry
-		createEntry(strconv.Itoa(u.ID), activityID, time.Now())
-		renderTemplate(w, r, "passwordStamp", map[string]any{"User": u, "Success": true})
-		return
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+    session, _ := store.Get(r, "session")
+    if idVal, ok := session.Values["db_user_id"]; ok {
+        // Logged-in DB user: no password needed
+        uid := 0
+        switch v := idVal.(type) {
+        case int:
+            uid = v
+        case int64:
+            uid = int(v)
+        case string:
+            uid, _ = strconv.Atoi(v)
+        }
+        u := getUser(strconv.Itoa(uid))
+        switch r.Method {
+        case http.MethodGet:
+            activities := getActivities()
+            var current any
+            if st, at, ok2 := getCurrentStatusForUserID(u.ID); ok2 {
+                current = map[string]string{"Status": st, "Since": humanizeDuration(time.Since(at))}
+            }
+            renderTemplate(w, r, "passwordStamp", map[string]any{
+                "User":       u,
+                "Activities": activities,
+                "Current":    current,
+            })
+            return
+        case http.MethodPost:
+            activityID := r.FormValue("activity_id")
+            if activityID == "" {
+                activities := getActivities()
+                var current any
+                if st, at, ok2 := getCurrentStatusForUserID(u.ID); ok2 {
+                    current = map[string]string{"Status": st, "Since": humanizeDuration(time.Since(at))}
+                }
+                renderTemplate(w, r, "passwordStamp", map[string]any{
+                    "User":       u,
+                    "Activities": activities,
+                    "Current":    current,
+                })
+                return
+            }
+            createEntry(strconv.Itoa(u.ID), activityID, time.Now())
+            var current any
+            if st, at, ok2 := getCurrentStatusForUserID(u.ID); ok2 {
+                current = map[string]string{"Status": st, "Since": humanizeDuration(time.Since(at))}
+            }
+            renderTemplate(w, r, "passwordStamp", map[string]any{"User": u, "Success": true, "Current": current})
+            return
+        default:
+            http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+            return
+        }
+    }
+    // Fallback: email + password flow
+    switch r.Method {
+    case http.MethodGet:
+        renderTemplate(w, r, "passwordStamp", nil)
+        return
+    case http.MethodPost:
+        email := r.FormValue("email")
+        pwd := r.FormValue("pwd")
+        activityID := r.FormValue("activity_id")
+        u, ok := getUserByEmail(email)
+        if !ok || u.Password == "" {
+            renderTemplate(w, r, "passwordStamp", map[string]any{"Error": "Unbekannte E-Mail oder kein Passwort gesetzt."})
+            return
+        }
+        if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(pwd)); err != nil {
+            renderTemplate(w, r, "passwordStamp", map[string]any{"Error": "Falsches Passwort."})
+            return
+        }
+        if activityID == "" {
+            activities := getActivities()
+            var current any
+            if st, at, ok2 := getCurrentStatusForUserID(u.ID); ok2 {
+                current = map[string]string{"Status": st, "Since": humanizeDuration(time.Since(at))}
+            }
+            renderTemplate(w, r, "passwordStamp", map[string]any{
+                "User":       u,
+                "Activities": activities,
+                "Pwd":        pwd,
+                "Current":    current,
+            })
+            return
+        }
+        createEntry(strconv.Itoa(u.ID), activityID, time.Now())
+        var current any
+        if st, at, ok2 := getCurrentStatusForUserID(u.ID); ok2 {
+            current = map[string]string{"Status": st, "Since": humanizeDuration(time.Since(at))}
+        }
+        renderTemplate(w, r, "passwordStamp", map[string]any{"User": u, "Success": true, "Current": current})
+        return
+    default:
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 }
 
 type PageData struct {
@@ -542,24 +640,28 @@ func workStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 // workHoursHandler shows the work hours table
 func workHoursHandler(w http.ResponseWriter, r *http.Request) {
-	data := getWorkHoursData()
-	headers := []string{"User Name", "Work Date", "Work Hours"}
-	rows := make([][]interface{}, len(data))
-	for i, d := range data {
-		rows[i] = []interface{}{d.UserName, d.WorkDate, d.WorkHours}
-	}
-
-	tableData := struct {
-		Title   string
-		Headers []string
-		Rows    [][]interface{}
-	}{
-		Title:   "Work Hours Overview",
-		Headers: headers,
-		Rows:    rows,
-	}
-
-	renderTemplate(w, r, "workhours", tableData)
+    // Admin sees all; regular users see their own
+    session, _ := store.Get(r, "session")
+    role, _ := session.Values["role"].(string)
+    var data []WorkHoursData
+    if role == "admin" || role == "Admin" || role == "ADMIN" {
+        data = getWorkHoursData()
+    } else if u, ok := currentDBUserFromSession(r); ok {
+        data = getWorkHoursDataForUser(u.Name)
+    } else {
+        data = nil
+    }
+    headers := []string{"User Name", "Work Date", "Work Hours"}
+    rows := make([][]interface{}, len(data))
+    for i, d := range data {
+        rows[i] = []interface{}{d.UserName, d.WorkDate, d.WorkHours}
+    }
+    tableData := struct {
+        Title   string
+        Headers []string
+        Rows    [][]interface{}
+    }{"Work Hours Overview", headers, rows}
+    renderTemplate(w, r, "workhours", tableData)
 }
 
 // currentStatusHandler shows who is currently clocked in/out
@@ -860,6 +962,39 @@ func downloadWorkHoursCSV(w http.ResponseWriter, r *http.Request) {
 
 // myHistoryHandler lets a user view their own history by email+password with optional date range
 func myHistoryHandler(w http.ResponseWriter, r *http.Request) {
+    session, _ := store.Get(r, "session")
+    if idVal, ok := session.Values["db_user_id"]; ok {
+        // Logged-in DB user path: no password required
+        uid := 0
+        switch v := idVal.(type) {
+        case int:
+            uid = v
+        case int64:
+            uid = int(v)
+        case string:
+            uid, _ = strconv.Atoi(v)
+        }
+        u := getUser(strconv.Itoa(uid))
+        if r.Method == http.MethodGet {
+            renderTemplate(w, r, "myHistory", map[string]any{"User": u})
+            return
+        }
+        if r.Method == http.MethodPost {
+            from := r.FormValue("from")
+            to := r.FormValue("to")
+            entries := getUserEntriesDetailed(u.ID, from, to)
+            renderTemplate(w, r, "myHistory", map[string]any{
+                "User":    u,
+                "From":    from,
+                "To":      to,
+                "Entries": entries,
+            })
+            return
+        }
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    // Fallback: email + password flow
     switch r.Method {
     case http.MethodGet:
         renderTemplate(w, r, "myHistory", nil)

@@ -712,8 +712,10 @@ func getUserEntriesDetailed(userID int, from, to string) []EntryDetail {
     query := fmt.Sprintf(`
         SELECT 
             e.id,
+            u.id as user_id,
             u.name as user_name,
             COALESCE(d.name, 'No Department') as department,
+            t.id as activity_id,
             t.status as activity,
             e.date,
             e.date as start_time,
@@ -752,7 +754,7 @@ func getUserEntriesDetailed(userID int, from, to string) []EntryDetail {
     var list []EntryDetail
     for rows.Next() {
         var e EntryDetail
-        if err := rows.Scan(&e.ID, &e.UserName, &e.Department, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+        if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
             log.Printf("Scan user entry failed: %v", err)
             continue
         }
@@ -823,6 +825,52 @@ func getUserByEmail(email string) (User, bool) {
     return u, true
 }
 
+// Lookup user by name
+func getUserByName(name string) (User, bool) {
+    db := getDB()
+    defer db.Close()
+    query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, COALESCE(department_id,0), COALESCE(auto_checkout_midnight,0) FROM %s WHERE name=@name", tbl("users"))
+    var u User
+    if err := db.QueryRow(query, sql.Named("name", name)).Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
+        return User{}, false
+    }
+    return u, true
+}
+
+// Return current status and timestamp for a user, if any
+func getCurrentStatusForUserID(userID int) (status string, at time.Time, ok bool) {
+    db := getDB()
+    defer db.Close()
+    row := db.QueryRow(fmt.Sprintf("SELECT status, date FROM %s WHERE user_id=@id", tbl("current_status")), sql.Named("id", userID))
+    var s string
+    var t time.Time
+    if err := row.Scan(&s, &t); err != nil {
+        return "", time.Time{}, false
+    }
+    return s, t, true
+}
+
+// Work hours filtered for a single user (by user name as in view)
+func getWorkHoursDataForUser(userName string) []WorkHoursData {
+    db := getDB()
+    defer db.Close()
+    rows, err := db.Query(fmt.Sprintf("SELECT user_name, work_date, work_hours FROM %s WHERE user_name=@u", tbl("work_hours")), sql.Named("u", userName))
+    if err != nil {
+        log.Printf("Query work_hours (user) failed: %v", err)
+        return nil
+    }
+    defer rows.Close()
+    var list []WorkHoursData
+    for rows.Next() {
+        var w WorkHoursData
+        if err := rows.Scan(&w.UserName, &w.WorkDate, &w.WorkHours); err != nil {
+            log.Fatal(err)
+        }
+        list = append(list, w)
+    }
+    return list
+}
+
 func updateActivity(id, status, work, comment string) {
 	db := getDB()
 	defer db.Close()
@@ -880,14 +928,16 @@ func getEntry(id string) EntryDetail {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf(`
-		SELECT 
-			e.id,
-			u.name as user_name,
-			COALESCE(d.name, 'No Department') as department,
-			t.status as activity,
-			e.date,
-			e.date as start_time,
+    query := fmt.Sprintf(`
+        SELECT 
+            e.id,
+            u.id as user_id,
+            u.name as user_name,
+            COALESCE(d.name, 'No Department') as department,
+            t.id as activity_id,
+            t.status as activity,
+            e.date,
+            e.date as start_time,
 			COALESCE(
 				(SELECT MIN(next_e.date) FROM %s next_e 
 				 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
@@ -910,13 +960,13 @@ func getEntry(id string) EntryDetail {
 		WHERE e.id = @id
 	`, tbl("entries"), tbl("entries"), tbl("entries"), tbl("users"), tbl("departments"), tbl("type"))
 
-	var e EntryDetail
-	if err := db.QueryRow(query, sql.Named("id", id)).
-		Scan(&e.ID, &e.UserName, &e.Department, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
-		log.Printf("Get entry failed: %v", err)
-		return EntryDetail{}
-	}
-	return e
+    var e EntryDetail
+    if err := db.QueryRow(query, sql.Named("id", id)).
+        Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+        log.Printf("Get entry failed: %v", err)
+        return EntryDetail{}
+    }
+    return e
 }
 
 // Delete functions
@@ -1046,15 +1096,17 @@ type UserActivitySummary struct {
 }
 
 type EntryDetail struct {
-	ID         int
-	UserName   string
-	Department string
-	Activity   string
-	Date       string
-	Start      string
-	End        string
-	Duration   float64
-	Comment    string
+    ID         int
+    UserID     int
+    UserName   string
+    Department string
+    ActivityID int
+    Activity   string
+    Date       string
+    Start      string
+    End        string
+    Duration   float64
+    Comment    string
 }
 
 // Enhanced statistics functions
@@ -1227,14 +1279,16 @@ func getEntriesWithDetails() []EntryDetail {
 	db := getDB()
 	defer db.Close()
 
-	query := fmt.Sprintf(`
-		SELECT 
-			e.id,
-			u.name as user_name,
-			COALESCE(d.name, 'No Department') as department,
-			t.status as activity,
-			e.date,
-			e.date as start_time,
+    query := fmt.Sprintf(`
+        SELECT 
+            e.id,
+            u.id as user_id,
+            u.name as user_name,
+            COALESCE(d.name, 'No Department') as department,
+            t.id as activity_id,
+            t.status as activity,
+            e.date,
+            e.date as start_time,
 			COALESCE(
 				(SELECT MIN(next_e.date) FROM %s next_e 
 				 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
@@ -1265,14 +1319,14 @@ func getEntriesWithDetails() []EntryDetail {
 	}
 	defer rows.Close()
 
-	var list []EntryDetail
-	for rows.Next() {
-		var e EntryDetail
-		if err := rows.Scan(&e.ID, &e.UserName, &e.Department, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
-			log.Printf("Scan entry detail failed: %v", err)
-			continue
-		}
-		list = append(list, e)
-	}
+    var list []EntryDetail
+    for rows.Next() {
+        var e EntryDetail
+        if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+            log.Printf("Scan entry detail failed: %v", err)
+            continue
+        }
+        list = append(list, e)
+    }
 	return list
 }

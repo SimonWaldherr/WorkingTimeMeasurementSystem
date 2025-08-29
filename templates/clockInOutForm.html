@@ -3,6 +3,13 @@
 {{ define "content" }}
 <div class="card p-4 mx-auto" style="max-width: 560px;">
   <h2 class="mb-2">Clock In / Clock Out</h2>
+  {{ if .Content.Current }}
+  <div class="alert alert-info py-2">
+    <i class="bi bi-person-check"></i>
+    Current: <strong>{{ .Content.Current.Status }}</strong>
+    <small class="text-muted ms-2">since {{ .Content.Current.Since }}</small>
+  </div>
+  {{ end }}
   <p class="text-secondary">Scannen Sie nacheinander Benutzer- und Aktivitäts-Barcode. Das Formular sendet automatisch.</p>
   <form id="clockForm" action="/clockInOut" method="post" autocomplete="off">
     <div class="mb-3">
