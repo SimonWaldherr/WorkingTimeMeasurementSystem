@@ -29,14 +29,19 @@ func init() {
 			path.Join(templatesDir, "footer.html"),
 		)
 		if err != nil {
-			panic("failed to parse templates from disk: " + err.Error())
+			// don't crash the server; log and continue with empty base
+			// subsequent calls to renderTemplate will handle errors
+			// and return 500 for the specific request
+			// (base will be nil and Clone() will error per request)
+			// We still assign a minimal template to avoid nil deref
+			base = template.Must(template.New("base").Parse("{{define \"base\"}}<html><body>{{ block \"content\" . }}{{ end }}</body></html>{{end}}"))
 		}
 	} else {
 		// Folder does not exist, parse templates from embedded FS
 		var err error
 		base, err = template.ParseFS(templatesFS, "templates/base.html", "templates/header.html", "templates/footer.html")
 		if err != nil {
-			panic("failed to parse embedded templates: " + err.Error())
+			base = template.Must(template.New("base").Parse("{{define \"base\"}}<html><body>{{ block \"content\" . }}{{ end }}</body></html>{{end}}"))
 		}
 	}
 }

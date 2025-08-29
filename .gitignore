@@ -7,3 +7,4 @@ time_tracking.test.db
 time_tracking.db
 *.db
 workingtime
+tenant/*.workingtimesystem.de

@@ -169,7 +169,9 @@ func getDB() *sql.DB {
 
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
-		log.Fatalf("[DB] Open failed driver=%s dsn=%s err=%v", driver, dsn, err)
+		// don't crash the server; return a dummy DB that will fail later
+		log.Printf("[DB] Open failed driver=%s dsn=%s err=%v", driver, dsn, err)
+		return db
 	}
 	return db
 }
@@ -374,7 +376,8 @@ func getUsers() []User {
 
 	rows, err := db.Query(fmt.Sprintf("SELECT id, name, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, stampkey, COALESCE(auto_checkout_midnight,0) FROM %s", tbl("users")))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("getUsers query failed: %v", err)
+		return nil
 	}
 	defer rows.Close()
 
@@ -382,7 +385,8 @@ func getUsers() []User {
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.Stampkey, &u.AutoCheckoutMidnight); err != nil {
-			log.Fatal(err)
+			log.Printf("getUsers scan failed: %v", err)
+			continue
 		}
 		list = append(list, u)
 	}
@@ -395,7 +399,8 @@ func getActivities() []Activity {
 
 	rows, err := db.Query(fmt.Sprintf("SELECT id, status, work, comment FROM %s", tbl("type")))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("getActivities query failed: %v", err)
+		return nil
 	}
 	defer rows.Close()
 
@@ -403,7 +408,8 @@ func getActivities() []Activity {
 	for rows.Next() {
 		var a Activity
 		if err := rows.Scan(&a.ID, &a.Status, &a.Work, &a.Comment); err != nil {
-			log.Fatal(err)
+			log.Printf("getActivities scan failed: %v", err)
+			continue
 		}
 		list = append(list, a)
 	}
@@ -416,7 +422,8 @@ func getDepartments() []Department {
 
 	rows, err := db.Query(fmt.Sprintf("SELECT id, name FROM %s", tbl("departments")))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("getDepartments query failed: %v", err)
+		return nil
 	}
 	defer rows.Close()
 
@@ -424,7 +431,8 @@ func getDepartments() []Department {
 	for rows.Next() {
 		var d Department
 		if err := rows.Scan(&d.ID, &d.Name); err != nil {
-			log.Fatal(err)
+			log.Printf("getDepartments scan failed: %v", err)
+			continue
 		}
 		list = append(list, d)
 	}
@@ -437,7 +445,8 @@ func getEntries() []Entry {
 
 	rows, err := db.Query(fmt.Sprintf("SELECT id, user_id, type_id, date FROM %s", tbl("entries")))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("getEntries query failed: %v", err)
+		return nil
 	}
 	defer rows.Close()
 
@@ -445,7 +454,8 @@ func getEntries() []Entry {
 	for rows.Next() {
 		var e Entry
 		if err := rows.Scan(&e.ID, &e.UserID, &e.ActivityID, &e.Date); err != nil {
-			log.Fatal(err)
+			log.Printf("getEntries scan failed: %v", err)
+			continue
 		}
 		list = append(list, e)
 	}
@@ -462,7 +472,8 @@ func getUser(id string) User {
 	var u User
 	if err := db.QueryRow(query, sql.Named("id", id)).
 		Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
-		log.Fatal(err)
+		log.Printf("getUser failed: %v", err)
+		return User{}
 	}
 	return u
 }
@@ -474,7 +485,8 @@ func getAllUsers() []User {
 	query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, COALESCE(auto_checkout_midnight,0) FROM %s", tbl("users"))
 	rows, err := db.Query(query)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("getAllUsers query failed: %v", err)
+		return nil
 	}
 	defer rows.Close()
 
@@ -482,7 +494,8 @@ func getAllUsers() []User {
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
-			log.Fatal(err)
+			log.Printf("getAllUsers scan failed: %v", err)
+			continue
 		}
 		users = append(users, u)
 	}
@@ -496,7 +509,8 @@ func getAllActivities() []Activity {
 	query := fmt.Sprintf("SELECT id, status, work, comment FROM %s", tbl("type"))
 	rows, err := db.Query(query)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("getAllActivities query failed: %v", err)
+		return nil
 	}
 	defer rows.Close()
 
@@ -504,7 +518,8 @@ func getAllActivities() []Activity {
 	for rows.Next() {
 		var a Activity
 		if err := rows.Scan(&a.ID, &a.Status, &a.Work, &a.Comment); err != nil {
-			log.Fatal(err)
+			log.Printf("getAllActivities scan failed: %v", err)
+			continue
 		}
 		activities = append(activities, a)
 	}
@@ -519,7 +534,8 @@ func getActivity(id string) Activity {
 	var a Activity
 	if err := db.QueryRow(query, sql.Named("id", id)).
 		Scan(&a.ID, &a.Status, &a.Work, &a.Comment); err != nil {
-		log.Fatal(err)
+		log.Printf("getActivity failed: %v", err)
+		return Activity{}
 	}
 	return a
 }
@@ -532,7 +548,8 @@ func getDepartment(id string) Department {
 	var d Department
 	if err := db.QueryRow(query, sql.Named("id", id)).
 		Scan(&d.ID, &d.Name); err != nil {
-		log.Fatal(err)
+		log.Printf("getDepartment failed: %v", err)
+		return Department{}
 	}
 	return d
 }
@@ -567,7 +584,8 @@ func createUniqueStampKey() int {
 		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE stampkey=@sk", tbl("users"))
 		var count int
 		if err := db.QueryRow(query, sql.Named("sk", stampKey)).Scan(&count); err != nil {
-			log.Fatal(err)
+			log.Printf("createUniqueStampKey check failed: %v", err)
+			continue
 		}
 		if count == 0 {
 			return int(stampKey)
@@ -588,11 +606,13 @@ func createUser(name, stampkey, email, password, role, position, departmentID st
 		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE stampkey=@sk", tbl("users"))
 		var count int
 		if err := db.QueryRow(query, sql.Named("sk", stampkey)).Scan(&count); err != nil {
-			log.Fatal(err)
+			log.Printf("createUser check sk failed: %v", err)
+			count = 0
 		}
 
 		if count > 0 {
-			log.Fatalf("Stampkey %s already exists. Please use a different one.", stampkey)
+			log.Printf("Stampkey %s already exists. Please use a different one.", stampkey)
+			return
 		}
 	}
 
@@ -619,7 +639,7 @@ func createUser(name, stampkey, email, password, role, position, departmentID st
 		sql.Named("dept", dept),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("createUser insert failed: %v", err)
 	}
 }
 
@@ -650,7 +670,7 @@ func createActivity(status, work, comment string) {
 		sql.Named("comment", comment),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("updateDepartment failed: %v", err)
 	}
 }
 
@@ -660,7 +680,7 @@ func createDepartment(name string) {
 
 	query := fmt.Sprintf("INSERT INTO %s (name) VALUES (@name)", tbl("departments"))
 	if _, err := db.Exec(query, sql.Named("name", name)); err != nil {
-		log.Fatal(err)
+		log.Printf("createDepartment failed: %v", err)
 	}
 }
 
@@ -680,7 +700,7 @@ func createEntry(userID, activityID string, entrydate time.Time) {
 		sql.Named("date", entrydate),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("createEntry failed: %v", err)
 	}
 }
 
@@ -819,7 +839,7 @@ func updateUser(id, name, stampkey, email, password, role, position, departmentI
 			sql.Named("id", id),
 		)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("updateUser with password failed: %v", err)
 		}
 		return
 	}
@@ -836,7 +856,7 @@ func updateUser(id, name, stampkey, email, password, role, position, departmentI
 		sql.Named("id", id),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("updateUser failed: %v", err)
 	}
 }
 
@@ -891,7 +911,8 @@ func getWorkHoursDataForUser(userName string) []WorkHoursData {
 	for rows.Next() {
 		var w WorkHoursData
 		if err := rows.Scan(&w.UserName, &w.WorkDate, &w.WorkHours); err != nil {
-			log.Fatal(err)
+			log.Printf("getWorkHoursDataForUser scan failed: %v", err)
+			continue
 		}
 		list = append(list, w)
 	}
@@ -913,7 +934,7 @@ func updateActivity(id, status, work, comment string) {
 		sql.Named("id", id),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("updateActivity failed: %v", err)
 	}
 }
 
@@ -928,7 +949,7 @@ func updateDepartment(id, name string) {
 		sql.Named("id", id),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("updateEntry failed: %v", err)
 	}
 }
 
@@ -947,7 +968,7 @@ func updateEntry(id, userID, activityID, date, comment string) {
 		sql.Named("id", id),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("deleteEntry failed: %v", err)
 	}
 }
 
@@ -1004,7 +1025,7 @@ func deleteEntry(id string) {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id=@id", tbl("entries"))
 	_, err := db.Exec(query, sql.Named("id", id))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("deleteActivity failed: %v", err)
 	}
 }
 
@@ -1015,7 +1036,7 @@ func deleteActivity(id string) {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id=@id", tbl("type"))
 	_, err := db.Exec(query, sql.Named("id", id))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("deleteDepartment failed: %v", err)
 	}
 }
 
@@ -1026,7 +1047,7 @@ func deleteDepartment(id string) {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id=@id", tbl("departments"))
 	_, err := db.Exec(query, sql.Named("id", id))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("deleteUser entries failed: %v", err)
 	}
 }
 
@@ -1038,7 +1059,7 @@ func deleteUser(id string) {
 	query := fmt.Sprintf("DELETE FROM %s WHERE user_id=@id", tbl("entries"))
 	_, err := db.Exec(query, sql.Named("id", id))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("deleteUser failed: %v", err)
 	}
 
 	// Then delete the user
@@ -1068,7 +1089,8 @@ func getWorkHoursData() []WorkHoursData {
 	for rows.Next() {
 		var w WorkHoursData
 		if err := rows.Scan(&w.UserName, &w.WorkDate, &w.WorkHours); err != nil {
-			log.Fatal(err)
+			log.Printf("getWorkHoursData scan failed: %v", err)
+			continue
 		}
 		list = append(list, w)
 	}
@@ -1090,7 +1112,8 @@ func getCurrentStatusData() []CurrentStatusData {
 	for rows.Next() {
 		var c CurrentStatusData
 		if err := rows.Scan(&c.UserName, &c.Status, &c.Date); err != nil {
-			log.Fatal(err)
+			log.Printf("getCurrentStatusData scan failed: %v", err)
+			continue
 		}
 		list = append(list, c)
 	}

@@ -189,7 +189,8 @@ func main() {
 	}
 	users, err := loadCredentials("credentials.csv")
 	if err != nil {
-		log.Fatalf("Error loading credentials: %v", err)
+		log.Printf("Error loading credentials: %v (continuing with empty CSV users)", err)
+		users = map[string]AuthUser{}
 	}
 	log.Printf("  Credentials file = %s", "credentials.csv")
 
@@ -280,6 +281,12 @@ func main() {
 	log.Printf("Starting server on :8083…")
 	// Root wrapper to bind request host for multi-tenant SQLite
 	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("Recovered from panic: %v", rec)
+				renderInternalServerError(w, fmt.Errorf("unexpected error"))
+			}
+		}()
 		host := r.Host
 		if idx := strings.IndexByte(host, ':'); idx >= 0 { // strip port
 			host = host[:idx]
@@ -290,7 +297,9 @@ func main() {
 		defer ClearRequestHost()
 		mux.ServeHTTP(w, r)
 	})
-	log.Fatal(http.ListenAndServe(":8083", root))
+	if err := http.ListenAndServe(":8083", root); err != nil {
+		log.Printf("server stopped: %v", err)
+	}
 }
 
 // indexHandler shows the home page
