@@ -1,0 +1,383 @@
+{{ define "title" }}Admin Downloads - Time Tracking System{{ end }}
+
+{{ define "content" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">
+    <i class="bi bi-download text-primary"></i> Admin Downloads
+  </h1>
+  <div>
+    <a href="/dashboard" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+  </div>
+</div>
+
+<!-- Download Types Cards -->
+<div class="row g-4 mb-4">
+  <!-- Time Entries Download -->
+  <div class="col-lg-6">
+    <div class="card h-100 border-primary">
+      <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-list-ul"></i> Time Entries Export
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text">Export detailed time entries with filtering options.</p>
+        
+        <form id="entriesForm" class="mb-3">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="entriesFromDate" class="form-label">From Date</label>
+              <input type="date" class="form-control" id="entriesFromDate">
+            </div>
+            <div class="col-md-6">
+              <label for="entriesToDate" class="form-label">To Date</label>
+              <input type="date" class="form-control" id="entriesToDate">
+            </div>
+          </div>
+          
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="entriesDepartment" class="form-label">Department</label>
+              <select class="form-select" id="entriesDepartment">
+                <option value="">All Departments</option>
+                {{ range .Content.Departments }}
+                <option value="{{ .ID }}">{{ .Name }}</option>
+                {{ end }}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="entriesUser" class="form-label">User</label>
+              <select class="form-select" id="entriesUser">
+                <option value="">All Users</option>
+                {{ range .Content.Users }}
+                <option value="{{ .ID }}">{{ .Name }}</option>
+                {{ end }}
+              </select>
+            </div>
+          </div>
+          
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="entriesActivity" class="form-label">Activity</label>
+              <select class="form-select" id="entriesActivity">
+                <option value="">All Activities</option>
+                {{ range .Content.Activities }}
+                <option value="{{ .ID }}">{{ .Status }}</option>
+                {{ end }}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="entriesFormat" class="form-label">Format</label>
+              <select class="form-select" id="entriesFormat">
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+                <option value="excel">Excel (CSV)</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-primary" onclick="downloadEntries()">
+            <i class="bi bi-download"></i> Download Entries
+          </button>
+          <button type="button" class="btn btn-outline-info" onclick="previewEntries()">
+            <i class="bi bi-eye"></i> Preview (10 rows)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Work Hours Summary Download -->
+  <div class="col-lg-6">
+    <div class="card h-100 border-success">
+      <div class="card-header bg-success text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-clock"></i> Work Hours Summary
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text">Export aggregated work hours by user and date.</p>
+        
+        <form id="workHoursForm" class="mb-3">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="workHoursFromDate" class="form-label">From Date</label>
+              <input type="date" class="form-control" id="workHoursFromDate">
+            </div>
+            <div class="col-md-6">
+              <label for="workHoursToDate" class="form-label">To Date</label>
+              <input type="date" class="form-control" id="workHoursToDate">
+            </div>
+          </div>
+          
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="workHoursUser" class="form-label">User</label>
+              <select class="form-select" id="workHoursUser">
+                <option value="">All Users</option>
+                {{ range .Content.Users }}
+                <option value="{{ .Name }}">{{ .Name }}</option>
+                {{ end }}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="workHoursFormat" class="form-label">Format</label>
+              <select class="form-select" id="workHoursFormat">
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+                <option value="excel">Excel (CSV)</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-success" onclick="downloadWorkHours()">
+            <i class="bi bi-download"></i> Download Work Hours
+          </button>
+          <button type="button" class="btn btn-outline-info" onclick="previewWorkHours()">
+            <i class="bi bi-eye"></i> Preview (10 rows)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Additional Reports Row -->
+<div class="row g-4">
+  <!-- Department Summary -->
+  <div class="col-lg-4">
+    <div class="card h-100 border-info">
+      <div class="card-header bg-info text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-diagram-3"></i> Department Summary
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text">Export department statistics and summaries.</p>
+        
+        <div class="mb-3">
+          <label for="deptSummaryFormat" class="form-label">Format</label>
+          <select class="form-select" id="deptSummaryFormat">
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-info" onclick="downloadDepartmentSummary()">
+            <i class="bi bi-download"></i> Download
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Activity Report -->
+  <div class="col-lg-4">
+    <div class="card h-100 border-warning">
+      <div class="card-header bg-warning text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-person-lines-fill"></i> User Activity Report
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text">Export user activity summary and current status.</p>
+        
+        <div class="mb-3">
+          <label for="userActivityFormat" class="form-label">Format</label>
+          <select class="form-select" id="userActivityFormat">
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-warning" onclick="downloadUserActivity()">
+            <i class="bi bi-download"></i> Download
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Time Trends Report -->
+  <div class="col-lg-4">
+    <div class="card h-100 border-secondary">
+      <div class="card-header bg-secondary text-white">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-graph-up"></i> Time Trends Report
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text">Export time tracking trends over the last 30 days.</p>
+        
+        <div class="mb-3">
+          <label for="trendsFormat" class="form-label">Format</label>
+          <select class="form-select" id="trendsFormat">
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-secondary" onclick="downloadTimeTrends()">
+            <i class="bi bi-download"></i> Download
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="previewModalLabel">Data Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="previewContent" class="table-responsive">
+          <!-- Preview content will be loaded here -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="downloadFromPreview">
+          <i class="bi bi-download"></i> Download Full Dataset
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Set default date ranges (last 30 days)
+document.addEventListener('DOMContentLoaded', function() {
+  const today = new Date();
+  const lastMonth = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
+  
+  const formatDate = (date) => date.toISOString().split('T')[0];
+  
+  // Set default dates for entries
+  document.getElementById('entriesFromDate').value = formatDate(lastMonth);
+  document.getElementById('entriesToDate').value = formatDate(today);
+  
+  // Set default dates for work hours
+  document.getElementById('workHoursFromDate').value = formatDate(lastMonth);
+  document.getElementById('workHoursToDate').value = formatDate(today);
+});
+
+function buildQueryParams(formData) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(formData)) {
+    if (value) params.append(key, value);
+  }
+  return params.toString();
+}
+
+function downloadEntries() {
+  const formData = {
+    fromDate: document.getElementById('entriesFromDate').value,
+    toDate: document.getElementById('entriesToDate').value,
+    department: document.getElementById('entriesDepartment').value,
+    user: document.getElementById('entriesUser').value,
+    activity: document.getElementById('entriesActivity').value,
+    format: document.getElementById('entriesFormat').value
+  };
+  
+  const queryParams = buildQueryParams(formData);
+  window.location.href = `/admin/download/entries?${queryParams}`;
+}
+
+function downloadWorkHours() {
+  const formData = {
+    fromDate: document.getElementById('workHoursFromDate').value,
+    toDate: document.getElementById('workHoursToDate').value,
+    user: document.getElementById('workHoursUser').value,
+    format: document.getElementById('workHoursFormat').value
+  };
+  
+  const queryParams = buildQueryParams(formData);
+  window.location.href = `/admin/download/workhours?${queryParams}`;
+}
+
+function downloadDepartmentSummary() {
+  const format = document.getElementById('deptSummaryFormat').value;
+  window.location.href = `/admin/download/departments?format=${format}`;
+}
+
+function downloadUserActivity() {
+  const format = document.getElementById('userActivityFormat').value;
+  window.location.href = `/admin/download/useractivity?format=${format}`;
+}
+
+function downloadTimeTrends() {
+  const format = document.getElementById('trendsFormat').value;
+  window.location.href = `/admin/download/trends?format=${format}`;
+}
+
+function previewEntries() {
+  const formData = {
+    fromDate: document.getElementById('entriesFromDate').value,
+    toDate: document.getElementById('entriesToDate').value,
+    department: document.getElementById('entriesDepartment').value,
+    user: document.getElementById('entriesUser').value,
+    activity: document.getElementById('entriesActivity').value,
+    format: 'preview',
+    limit: '10'
+  };
+  
+  const queryParams = buildQueryParams(formData);
+  
+  fetch(`/admin/download/entries?${queryParams}`)
+    .then(response => response.text())
+    .then(html => {
+      document.getElementById('previewContent').innerHTML = html;
+      document.getElementById('previewModalLabel').textContent = 'Time Entries Preview (10 rows)';
+      document.getElementById('downloadFromPreview').onclick = downloadEntries;
+      
+      const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+      modal.show();
+    })
+    .catch(error => {
+      console.error('Preview failed:', error);
+      alert('Failed to load preview. Please try again.');
+    });
+}
+
+function previewWorkHours() {
+  const formData = {
+    fromDate: document.getElementById('workHoursFromDate').value,
+    toDate: document.getElementById('workHoursToDate').value,
+    user: document.getElementById('workHoursUser').value,
+    format: 'preview',
+    limit: '10'
+  };
+  
+  const queryParams = buildQueryParams(formData);
+  
+  fetch(`/admin/download/workhours?${queryParams}`)
+    .then(response => response.text())
+    .then(html => {
+      document.getElementById('previewContent').innerHTML = html;
+      document.getElementById('previewModalLabel').textContent = 'Work Hours Preview (10 rows)';
+      document.getElementById('downloadFromPreview').onclick = downloadWorkHours;
+      
+      const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+      modal.show();
+    })
+    .catch(error => {
+      console.error('Preview failed:', error);
+      alert('Failed to load preview. Please try again.');
+    });
+}
+</script>
+{{ end }}

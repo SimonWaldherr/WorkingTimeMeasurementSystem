@@ -5,6 +5,7 @@ import (
 	//"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 
 	//"database/sql"
 
@@ -218,7 +219,15 @@ func main() {
     // calendar page
     mux.Handle("/calendar", basicAuthMiddleware(users, http.HandlerFunc(calendarHandler)))
 
-    // Admin downloads (CSV)
+    // Admin downloads page
+    mux.Handle("/admin/downloads", adminOnly(http.HandlerFunc(adminDownloadsHandler)))
+    
+    // Enhanced download endpoints with filtering
+    mux.Handle("/admin/download/entries", adminOnly(http.HandlerFunc(downloadEntriesEnhanced)))
+    mux.Handle("/admin/download/workhours", adminOnly(http.HandlerFunc(downloadWorkHoursEnhanced)))
+    mux.Handle("/admin/download/departments", adminOnly(http.HandlerFunc(downloadDepartmentSummary)))
+    mux.Handle("/admin/download/useractivity", adminOnly(http.HandlerFunc(downloadUserActivity)))
+    mux.Handle("/admin/download/trends", adminOnly(http.HandlerFunc(downloadTimeTrends)))
     mux.Handle("/admin/download/entries.csv", adminOnly(http.HandlerFunc(downloadEntriesCSV)))
     mux.Handle("/admin/download/work_hours.csv", adminOnly(http.HandlerFunc(downloadWorkHoursCSV)))
 
@@ -1108,6 +1117,328 @@ func downloadWorkHoursCSV(w http.ResponseWriter, r *http.Request) {
         enc.Write([]string{wrow.UserName, wrow.WorkDate, strconv.FormatFloat(wrow.WorkHours, 'f', 2, 64)})
     }
     enc.Flush()
+}
+
+// adminDownloadsHandler displays the enhanced downloads page for admins
+func adminDownloadsHandler(w http.ResponseWriter, r *http.Request) {
+    users := getUsers()
+    activities := getActivities()
+    departments := getDepartments()
+
+    data := struct {
+        Users       []User
+        Activities  []Activity
+        Departments []Department
+    }{
+        Users:       users,
+        Activities:  activities,
+        Departments: departments,
+    }
+
+    renderTemplate(w, r, "downloads", data)
+}
+
+// downloadEntriesEnhanced provides enhanced time entries download with filtering
+func downloadEntriesEnhanced(w http.ResponseWriter, r *http.Request) {
+    // Parse query parameters
+    fromDate := r.URL.Query().Get("fromDate")
+    toDate := r.URL.Query().Get("toDate")
+    department := r.URL.Query().Get("department")
+    user := r.URL.Query().Get("user")
+    activity := r.URL.Query().Get("activity")
+    format := r.URL.Query().Get("format")
+    limit := r.URL.Query().Get("limit")
+    
+    if format == "" {
+        format = "csv"
+    }
+
+    // Get filtered entries
+    entries := getEntriesWithDetailsFiltered(fromDate, toDate, department, user, activity, limit)
+
+    // Handle preview format
+    if format == "preview" {
+        renderPreviewTable(w, entries, "entries")
+        return
+    }
+
+    // Generate filename with timestamp
+    timestamp := time.Now().Format("2006-01-02_15-04-05")
+    var filename string
+    var contentType string
+
+    switch format {
+    case "json":
+        filename = fmt.Sprintf("time_entries_%s.json", timestamp)
+        contentType = "application/json"
+        w.Header().Set("Content-Type", contentType)
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        json.NewEncoder(w).Encode(entries)
+        
+    case "excel":
+        filename = fmt.Sprintf("time_entries_%s.csv", timestamp)
+        contentType = "text/csv"
+        w.Header().Set("Content-Type", contentType)
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        enc := csv.NewWriter(w)
+        // Excel-friendly CSV with BOM for UTF-8
+        w.Write([]byte{0xEF, 0xBB, 0xBF})
+        _ = enc.Write([]string{"ID", "User", "Department", "Activity", "Date", "Start", "End", "Duration Hours", "Comment"})
+        for _, e := range entries {
+            enc.Write([]string{strconv.Itoa(e.ID), e.UserName, e.Department, e.Activity, e.Date, e.Start, e.End, strconv.FormatFloat(e.Duration, 'f', 2, 64), e.Comment})
+        }
+        enc.Flush()
+        
+    default: // csv
+        filename = fmt.Sprintf("time_entries_%s.csv", timestamp)
+        contentType = "text/csv"
+        w.Header().Set("Content-Type", contentType)
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        enc := csv.NewWriter(w)
+        _ = enc.Write([]string{"ID", "User", "Department", "Activity", "Date", "Start", "End", "Duration Hours", "Comment"})
+        for _, e := range entries {
+            enc.Write([]string{strconv.Itoa(e.ID), e.UserName, e.Department, e.Activity, e.Date, e.Start, e.End, strconv.FormatFloat(e.Duration, 'f', 2, 64), e.Comment})
+        }
+        enc.Flush()
+    }
+}
+
+// downloadWorkHoursEnhanced provides enhanced work hours download with filtering
+func downloadWorkHoursEnhanced(w http.ResponseWriter, r *http.Request) {
+    // Parse query parameters
+    fromDate := r.URL.Query().Get("fromDate")
+    toDate := r.URL.Query().Get("toDate")
+    user := r.URL.Query().Get("user")
+    format := r.URL.Query().Get("format")
+    limit := r.URL.Query().Get("limit")
+    
+    if format == "" {
+        format = "csv"
+    }
+
+    // Get filtered work hours data
+    workHours := getWorkHoursDataFiltered(fromDate, toDate, user, limit)
+
+    // Handle preview format
+    if format == "preview" {
+        renderPreviewTableWorkHours(w, workHours)
+        return
+    }
+
+    // Generate filename with timestamp
+    timestamp := time.Now().Format("2006-01-02_15-04-05")
+    var filename string
+    var contentType string
+
+    switch format {
+    case "json":
+        filename = fmt.Sprintf("work_hours_%s.json", timestamp)
+        contentType = "application/json"
+        w.Header().Set("Content-Type", contentType)
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        json.NewEncoder(w).Encode(workHours)
+        
+    case "excel":
+        filename = fmt.Sprintf("work_hours_%s.csv", timestamp)
+        contentType = "text/csv"
+        w.Header().Set("Content-Type", contentType)
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        enc := csv.NewWriter(w)
+        // Excel-friendly CSV with BOM for UTF-8
+        w.Write([]byte{0xEF, 0xBB, 0xBF})
+        _ = enc.Write([]string{"User", "Date", "Work Hours"})
+        for _, wh := range workHours {
+            enc.Write([]string{wh.UserName, wh.WorkDate, strconv.FormatFloat(wh.WorkHours, 'f', 2, 64)})
+        }
+        enc.Flush()
+        
+    default: // csv
+        filename = fmt.Sprintf("work_hours_%s.csv", timestamp)
+        contentType = "text/csv"
+        w.Header().Set("Content-Type", contentType)
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        enc := csv.NewWriter(w)
+        _ = enc.Write([]string{"User", "Date", "Work Hours"})
+        for _, wh := range workHours {
+            enc.Write([]string{wh.UserName, wh.WorkDate, strconv.FormatFloat(wh.WorkHours, 'f', 2, 64)})
+        }
+        enc.Flush()
+    }
+}
+
+// downloadDepartmentSummary provides department summary download
+func downloadDepartmentSummary(w http.ResponseWriter, r *http.Request) {
+    format := r.URL.Query().Get("format")
+    if format == "" {
+        format = "csv"
+    }
+
+    departments := getDepartmentSummary()
+    timestamp := time.Now().Format("2006-01-02_15-04-05")
+
+    switch format {
+    case "json":
+        filename := fmt.Sprintf("department_summary_%s.json", timestamp)
+        w.Header().Set("Content-Type", "application/json")
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        json.NewEncoder(w).Encode(departments)
+        
+    default: // csv
+        filename := fmt.Sprintf("department_summary_%s.csv", timestamp)
+        w.Header().Set("Content-Type", "text/csv")
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        enc := csv.NewWriter(w)
+        _ = enc.Write([]string{"Department", "Total Users", "Total Hours", "Avg Hours Per User"})
+        for _, d := range departments {
+            enc.Write([]string{d.DepartmentName, strconv.Itoa(d.TotalUsers), strconv.FormatFloat(d.TotalHours, 'f', 2, 64), strconv.FormatFloat(d.AvgHoursPerUser, 'f', 2, 64)})
+        }
+        enc.Flush()
+    }
+}
+
+// downloadUserActivity provides user activity report download
+func downloadUserActivity(w http.ResponseWriter, r *http.Request) {
+    format := r.URL.Query().Get("format")
+    if format == "" {
+        format = "csv"
+    }
+
+    userActivity := getUserActivitySummary()
+    timestamp := time.Now().Format("2006-01-02_15-04-05")
+
+    switch format {
+    case "json":
+        filename := fmt.Sprintf("user_activity_%s.json", timestamp)
+        w.Header().Set("Content-Type", "application/json")
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        json.NewEncoder(w).Encode(userActivity)
+        
+    default: // csv
+        filename := fmt.Sprintf("user_activity_%s.csv", timestamp)
+        w.Header().Set("Content-Type", "text/csv")
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        enc := csv.NewWriter(w)
+        _ = enc.Write([]string{"User", "Department", "Total Work Hours", "Total Break Hours", "Last Activity", "Status"})
+        for _, u := range userActivity {
+            enc.Write([]string{u.UserName, u.Department, strconv.FormatFloat(u.TotalWorkHours, 'f', 2, 64), strconv.FormatFloat(u.TotalBreakHours, 'f', 2, 64), u.LastActivity, u.Status})
+        }
+        enc.Flush()
+    }
+}
+
+// downloadTimeTrends provides time trends report download
+func downloadTimeTrends(w http.ResponseWriter, r *http.Request) {
+    format := r.URL.Query().Get("format")
+    if format == "" {
+        format = "csv"
+    }
+
+    trends := getTimeTrackingTrends(30) // Last 30 days
+    timestamp := time.Now().Format("2006-01-02_15-04-05")
+
+    switch format {
+    case "json":
+        filename := fmt.Sprintf("time_trends_%s.json", timestamp)
+        w.Header().Set("Content-Type", "application/json")
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        json.NewEncoder(w).Encode(trends)
+        
+    default: // csv
+        filename := fmt.Sprintf("time_trends_%s.csv", timestamp)
+        w.Header().Set("Content-Type", "text/csv")
+        w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+        
+        enc := csv.NewWriter(w)
+        _ = enc.Write([]string{"Date", "Total Hours", "Active Users", "Work Entries", "Break Entries"})
+        for _, t := range trends {
+            enc.Write([]string{t.Date, strconv.FormatFloat(t.TotalHours, 'f', 2, 64), strconv.Itoa(t.ActiveUsers), strconv.Itoa(t.WorkEntries), strconv.Itoa(t.BreakEntries)})
+        }
+        enc.Flush()
+    }
+}
+
+// renderPreviewTable renders a preview table for entries
+func renderPreviewTable(w http.ResponseWriter, entries []EntryDetail, tableType string) {
+    w.Header().Set("Content-Type", "text/html")
+    
+    html := `<table class="table table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Department</th>
+                <th>Activity</th>
+                <th>Date</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Duration</th>
+                <th>Comment</th>
+            </tr>
+        </thead>
+        <tbody>`
+    
+    for _, e := range entries {
+        html += fmt.Sprintf(`
+            <tr>
+                <td>%d</td>
+                <td>%s</td>
+                <td>%s</td>
+                <td>%s</td>
+                <td>%s</td>
+                <td>%s</td>
+                <td>%s</td>
+                <td>%.2f h</td>
+                <td>%s</td>
+            </tr>`, e.ID, e.UserName, e.Department, e.Activity, e.Date, e.Start, e.End, e.Duration, e.Comment)
+    }
+    
+    html += `</tbody></table>`
+    
+    if len(entries) == 0 {
+        html = `<div class="alert alert-info">No entries found for the selected criteria.</div>`
+    }
+    
+    w.Write([]byte(html))
+}
+
+// renderPreviewTableWorkHours renders a preview table for work hours
+func renderPreviewTableWorkHours(w http.ResponseWriter, workHours []WorkHoursData) {
+    w.Header().Set("Content-Type", "text/html")
+    
+    html := `<table class="table table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>User</th>
+                <th>Date</th>
+                <th>Work Hours</th>
+            </tr>
+        </thead>
+        <tbody>`
+    
+    for _, wh := range workHours {
+        html += fmt.Sprintf(`
+            <tr>
+                <td>%s</td>
+                <td>%s</td>
+                <td>%.2f h</td>
+            </tr>`, wh.UserName, wh.WorkDate, wh.WorkHours)
+    }
+    
+    html += `</tbody></table>`
+    
+    if len(workHours) == 0 {
+        html = `<div class="alert alert-info">No work hours data found for the selected criteria.</div>`
+    }
+    
+    w.Write([]byte(html))
 }
 
 // myHistoryHandler lets a user view their own history by email+password with optional date range
