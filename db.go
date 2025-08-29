@@ -7,11 +7,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
-	"time"
-	"runtime"
 	"sync"
+	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
 	_ "github.com/mattn/go-sqlite3"
@@ -69,39 +69,39 @@ func getGID() int64 {
 }
 
 func resolveSQLitePath() string {
-    // Prefer request-bound host-specific DB path when available
-    if v, ok := currentHostByGID.Load(getGID()); ok {
-        host := fmt.Sprintf("%v", v)
-        // sanitize host for filesystem
-        safe := strings.ToLower(host)
-        safe = strings.ReplaceAll(safe, "/", "-")
-        // ensure tenant dir exists: tenant/<host>
-        dir := filepath.Join("tenant", safe)
-        _ = os.MkdirAll(dir, 0o755)
-        return filepath.Join(dir, "time_tracking.db")
-    }
-    // fallback to configured path
-    return sqlitePath
+	// Prefer request-bound host-specific DB path when available
+	if v, ok := currentHostByGID.Load(getGID()); ok {
+		host := fmt.Sprintf("%v", v)
+		// sanitize host for filesystem
+		safe := strings.ToLower(host)
+		safe = strings.ReplaceAll(safe, "/", "-")
+		// ensure tenant dir exists: tenant/<host>
+		dir := filepath.Join("tenant", safe)
+		_ = os.MkdirAll(dir, 0o755)
+		return filepath.Join(dir, "time_tracking.db")
+	}
+	// fallback to configured path
+	return sqlitePath
 }
 
 // EnsureSchemaCurrent ensures that for the current DB target (considering
 // the request-bound host for SQLite) the schema exists. It runs at most once
 // per SQLite file path.
 func EnsureSchemaCurrent() {
-    if dbBackend != "sqlite" {
-        return
-    }
-    path := resolveSQLitePath()
-    if _, done := initializedDBs.Load(path); done {
-        return
-    }
-    // Try to run schema creation idempotently for this path
-    log.Printf("[DB] Ensuring schema for SQLite at %s", path)
-    execBatches(embeddedSQLiteSchema, ";\n")
-    ensureUserPasswordColumn()
-    ensureUserRoleColumn()
-    ensureUserAutoCheckoutColumn()
-    initializedDBs.Store(path, true)
+	if dbBackend != "sqlite" {
+		return
+	}
+	path := resolveSQLitePath()
+	if _, done := initializedDBs.Load(path); done {
+		return
+	}
+	// Try to run schema creation idempotently for this path
+	log.Printf("[DB] Ensuring schema for SQLite at %s", path)
+	execBatches(embeddedSQLiteSchema, ";\n")
+	ensureUserPasswordColumn()
+	ensureUserRoleColumn()
+	ensureUserAutoCheckoutColumn()
+	initializedDBs.Store(path, true)
 }
 
 // Hilfsfunktionen
@@ -134,10 +134,10 @@ func init() {
 		mssqlUser = getenv("MSSQL_USER", `johndoe`)
 		mssqlPass = getenv("MSSQL_PASSWORD", "secret")
 		mssqlPort = atoiDefault(getenv("MSSQL_PORT", "1433"), 1433)
-	log.Printf("[DB] Backend=mssql server=%s db=%s user=%s port=%d", mssqlServer, mssqlDB, mssqlUser, mssqlPort)
+		log.Printf("[DB] Backend=mssql server=%s db=%s user=%s port=%d", mssqlServer, mssqlDB, mssqlUser, mssqlPort)
 	default: // sqlite
 		sqlitePath = getenv("SQLITE_PATH", "time_tracking.db")
-	log.Printf("[DB] Backend=sqlite defaultPath=%s (will switch per-host if set)", sqlitePath)
+		log.Printf("[DB] Backend=sqlite defaultPath=%s (will switch per-host if set)", sqlitePath)
 	}
 
 	// 3. Tabellen / Views anlegen (nur wenn sinnvoll)
@@ -169,7 +169,7 @@ func getDB() *sql.DB {
 
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
-        log.Fatalf("[DB] Open failed driver=%s dsn=%s err=%v", driver, dsn, err)
+		log.Fatalf("[DB] Open failed driver=%s dsn=%s err=%v", driver, dsn, err)
 	}
 	return db
 }
@@ -190,20 +190,20 @@ func tbl(name string) string {
 //---------------------------------------------------------------------
 
 func createDatabaseAndTables() {
-    switch dbBackend {
-    case "sqlite":
-        execBatches(embeddedSQLiteSchema, ";\n")
-    ensureUserPasswordColumn()
-    ensureUserRoleColumn()
-    ensureUserAutoCheckoutColumn()
-    case "mssql":
-        if os.Getenv("DB_AUTO_MIGRATE") == "1" {
-            //execBatches(embeddedMSSQLSchema, "\nGO")
-        }
-    ensureUserPasswordColumn()
-    ensureUserRoleColumn()
-    ensureUserAutoCheckoutColumn()
-    }
+	switch dbBackend {
+	case "sqlite":
+		execBatches(embeddedSQLiteSchema, ";\n")
+		ensureUserPasswordColumn()
+		ensureUserRoleColumn()
+		ensureUserAutoCheckoutColumn()
+	case "mssql":
+		if os.Getenv("DB_AUTO_MIGRATE") == "1" {
+			//execBatches(embeddedMSSQLSchema, "\nGO")
+		}
+		ensureUserPasswordColumn()
+		ensureUserRoleColumn()
+		ensureUserAutoCheckoutColumn()
+	}
 }
 
 // ensureUserPasswordColumn adds the password column if it does not exist
@@ -225,7 +225,10 @@ func ensureUserPasswordColumn() {
 			var notnull, pk int
 			var dflt sql.NullString
 			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
-				if strings.EqualFold(name, "password") { hasPwd = true; break }
+				if strings.EqualFold(name, "password") {
+					hasPwd = true
+					break
+				}
 			}
 		}
 		if !hasPwd {
@@ -251,7 +254,9 @@ func ensureUserRoleColumn() {
 	switch dbBackend {
 	case "sqlite":
 		rows, err := db.Query("PRAGMA table_info(users)")
-		if err != nil { return }
+		if err != nil {
+			return
+		}
 		defer rows.Close()
 		has := false
 		for rows.Next() {
@@ -260,7 +265,10 @@ func ensureUserRoleColumn() {
 			var notnull, pk int
 			var dflt sql.NullString
 			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
-				if strings.EqualFold(name, "role") { has = true; break }
+				if strings.EqualFold(name, "role") {
+					has = true
+					break
+				}
 			}
 		}
 		if !has {
@@ -277,33 +285,38 @@ func ensureUserRoleColumn() {
 
 // ensureUserAutoCheckoutColumn adds the auto_checkout_midnight column if missing
 func ensureUserAutoCheckoutColumn() {
-    db := getDB()
-    defer db.Close()
-    switch dbBackend {
-    case "sqlite":
-        rows, err := db.Query("PRAGMA table_info(users)")
-        if err != nil { return }
-        defer rows.Close()
-        has := false
-        for rows.Next() {
-            var cid int
-            var name, ctype string
-            var notnull, pk int
-            var dflt sql.NullString
-            if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
-                if strings.EqualFold(name, "auto_checkout_midnight") { has = true; break }
-            }
-        }
-        if !has {
-            _, _ = db.Exec("ALTER TABLE users ADD COLUMN auto_checkout_midnight INTEGER DEFAULT 0")
-        }
-    case "mssql":
-        var exists int
-        err := db.QueryRow("SELECT 1 FROM sys.columns WHERE Name = 'auto_checkout_midnight' AND Object_ID = Object_ID('dbo.users')").Scan(&exists)
-        if err == sql.ErrNoRows {
-            _, _ = db.Exec("ALTER TABLE dbo.users ADD auto_checkout_midnight INT NOT NULL DEFAULT 0")
-        }
-    }
+	db := getDB()
+	defer db.Close()
+	switch dbBackend {
+	case "sqlite":
+		rows, err := db.Query("PRAGMA table_info(users)")
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+		has := false
+		for rows.Next() {
+			var cid int
+			var name, ctype string
+			var notnull, pk int
+			var dflt sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+				if strings.EqualFold(name, "auto_checkout_midnight") {
+					has = true
+					break
+				}
+			}
+		}
+		if !has {
+			_, _ = db.Exec("ALTER TABLE users ADD COLUMN auto_checkout_midnight INTEGER DEFAULT 0")
+		}
+	case "mssql":
+		var exists int
+		err := db.QueryRow("SELECT 1 FROM sys.columns WHERE Name = 'auto_checkout_midnight' AND Object_ID = Object_ID('dbo.users')").Scan(&exists)
+		if err == sql.ErrNoRows {
+			_, _ = db.Exec("ALTER TABLE dbo.users ADD auto_checkout_midnight INT NOT NULL DEFAULT 0")
+		}
+	}
 }
 
 func execBatches(script, sep string) {
@@ -326,15 +339,15 @@ func execBatches(script, sep string) {
 //---------------------------------------------------------------------
 
 type User struct {
-    ID           int
-    Stampkey     string
-    Name         string
-    Email        string
-    Password     string
-    Role         string
-    Position     string
-    DepartmentID int
-    AutoCheckoutMidnight int
+	ID                   int
+	Stampkey             string
+	Name                 string
+	Email                string
+	Password             string
+	Role                 string
+	Position             string
+	DepartmentID         int
+	AutoCheckoutMidnight int
 }
 
 type Activity struct {
@@ -359,7 +372,7 @@ func getUsers() []User {
 	db := getDB()
 	defer db.Close()
 
-    rows, err := db.Query(fmt.Sprintf("SELECT id, name, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, stampkey, COALESCE(auto_checkout_midnight,0) FROM %s", tbl("users")))
+	rows, err := db.Query(fmt.Sprintf("SELECT id, name, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, stampkey, COALESCE(auto_checkout_midnight,0) FROM %s", tbl("users")))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -368,7 +381,7 @@ func getUsers() []User {
 	var list []User
 	for rows.Next() {
 		var u User
-    if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.Stampkey, &u.AutoCheckoutMidnight); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.Stampkey, &u.AutoCheckoutMidnight); err != nil {
 			log.Fatal(err)
 		}
 		list = append(list, u)
@@ -445,10 +458,10 @@ func getUser(id string) User {
 	db := getDB()
 	defer db.Close()
 
-    query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, COALESCE(auto_checkout_midnight,0) FROM %s WHERE id=@id", tbl("users"))
+	query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, COALESCE(auto_checkout_midnight,0) FROM %s WHERE id=@id", tbl("users"))
 	var u User
 	if err := db.QueryRow(query, sql.Named("id", id)).
-    Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
+		Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
 		log.Fatal(err)
 	}
 	return u
@@ -458,7 +471,7 @@ func getAllUsers() []User {
 	db := getDB()
 	defer db.Close()
 
-    query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, COALESCE(auto_checkout_midnight,0) FROM %s", tbl("users"))
+	query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, department_id, COALESCE(auto_checkout_midnight,0) FROM %s", tbl("users"))
 	rows, err := db.Query(query)
 	if err != nil {
 		log.Fatal(err)
@@ -468,7 +481,7 @@ func getAllUsers() []User {
 	var users []User
 	for rows.Next() {
 		var u User
-    if err := rows.Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
 			log.Fatal(err)
 		}
 		users = append(users, u)
@@ -563,8 +576,8 @@ func createUniqueStampKey() int {
 }
 
 func createUser(name, stampkey, email, password, role, position, departmentID string) {
-    db := getDB()
-    defer db.Close()
+	db := getDB()
+	defer db.Close()
 
 	// Überprüfen, ob der Stampkey bereits existiert
 	if stampkey == "" {
@@ -594,32 +607,34 @@ func createUser(name, stampkey, email, password, role, position, departmentID st
 			hashed = string(b)
 		}
 	}
-    query := fmt.Sprintf(`INSERT INTO %s (name, stampkey, email, password, role, position, department_id)
+	query := fmt.Sprintf(`INSERT INTO %s (name, stampkey, email, password, role, position, department_id)
                            VALUES (@name,@sk,@mail,@pwd,@role,@pos,@dept)`, tbl("users"))
-    _, err := db.Exec(query,
-        sql.Named("name", name),
-        sql.Named("sk", stampkey),
-        sql.Named("mail", email),
-        sql.Named("pwd", hashed),
-        sql.Named("role", role),
-        sql.Named("pos", position),
-        sql.Named("dept", dept),
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
+	_, err := db.Exec(query,
+		sql.Named("name", name),
+		sql.Named("sk", stampkey),
+		sql.Named("mail", email),
+		sql.Named("pwd", hashed),
+		sql.Named("role", role),
+		sql.Named("pos", position),
+		sql.Named("dept", dept),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // setUserAutoCheckout updates the per-user auto checkout flag (0/1)
 func setUserAutoCheckout(id string, enabled bool) {
-    db := getDB()
-    defer db.Close()
-    val := 0
-    if enabled { val = 1 }
-    query := fmt.Sprintf("UPDATE %s SET auto_checkout_midnight=@auto WHERE id=@id", tbl("users"))
-    if _, err := db.Exec(query, sql.Named("auto", val), sql.Named("id", id)); err != nil {
-        log.Printf("update auto_checkout_midnight failed: %v", err)
-    }
+	db := getDB()
+	defer db.Close()
+	val := 0
+	if enabled {
+		val = 1
+	}
+	query := fmt.Sprintf("UPDATE %s SET auto_checkout_midnight=@auto WHERE id=@id", tbl("users"))
+	if _, err := db.Exec(query, sql.Named("auto", val), sql.Named("id", id)); err != nil {
+		log.Printf("update auto_checkout_midnight failed: %v", err)
+	}
 }
 
 func createActivity(status, work, comment string) {
@@ -651,65 +666,73 @@ func createDepartment(name string) {
 
 // createEntry creates a new time entry for a user
 func createEntry(userID, activityID string, entrydate time.Time) {
-    db := getDB()
-    defer db.Close()
+	db := getDB()
+	defer db.Close()
 
-    // Ensure midnight auto-checkout if enabled and last working entry is on a previous day
-    ensureMidnightAutoCheckoutWithDB(db, atoiDefault(userID, 0), entrydate)
+	// Ensure midnight auto-checkout if enabled and last working entry is on a previous day
+	ensureMidnightAutoCheckoutWithDB(db, atoiDefault(userID, 0), entrydate)
 
-    query := fmt.Sprintf(`INSERT INTO %s (user_id, type_id, date)
+	query := fmt.Sprintf(`INSERT INTO %s (user_id, type_id, date)
                             VALUES (@uid, @aid, @date)`, tbl("entries"))
-    _, err := db.Exec(query,
-        sql.Named("uid", userID),
-        sql.Named("aid", activityID),
-        sql.Named("date", entrydate),
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
+	_, err := db.Exec(query,
+		sql.Named("uid", userID),
+		sql.Named("aid", activityID),
+		sql.Named("date", entrydate),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // ensureMidnightAutoCheckoutWithDB inserts a non-work entry at 23:59:59 of the day of the
 // user's last working entry if auto checkout is enabled and the last entry is from a previous day.
 func ensureMidnightAutoCheckoutWithDB(db *sql.DB, userID int, now time.Time) {
-    if userID <= 0 { return }
-    var auto int
-    if err := db.QueryRow("SELECT COALESCE(auto_checkout_midnight,0) FROM "+tbl("users")+" WHERE id=?", userID).Scan(&auto); err != nil {
-        return
-    }
-    if auto == 0 { return }
-    // get last entry and whether it was a working type
-    var last time.Time
-    var work int
-    q := fmt.Sprintf("SELECT date, (SELECT work FROM %s t WHERE t.id = e.type_id) FROM %s e WHERE user_id=? ORDER BY date DESC LIMIT 1", tbl("type"), tbl("entries"))
-    if err := db.QueryRow(q, userID).Scan(&last, &work); err != nil {
-        return
-    }
-    if work != 1 { return }
-    ly, lm, ld := last.Date()
-    ny, nm, nd := now.Date()
-    if ly == ny && lm == nm && ld == nd { return }
-    midnight := time.Date(ly, lm, ld, 23, 59, 59, 0, last.Location())
-    // find non-work activity (prefer Break)
-    var nonWorkID int
-    if err := db.QueryRow("SELECT id FROM "+tbl("type")+" WHERE work=0 ORDER BY CASE WHEN status='Break' THEN 0 ELSE 1 END, id LIMIT 1").Scan(&nonWorkID); err != nil {
-        return
-    }
-    _, _ = db.Exec("INSERT INTO "+tbl("entries")+"(user_id, type_id, date) VALUES (?,?,?)", userID, nonWorkID, midnight)
+	if userID <= 0 {
+		return
+	}
+	var auto int
+	if err := db.QueryRow("SELECT COALESCE(auto_checkout_midnight,0) FROM "+tbl("users")+" WHERE id=?", userID).Scan(&auto); err != nil {
+		return
+	}
+	if auto == 0 {
+		return
+	}
+	// get last entry and whether it was a working type
+	var last time.Time
+	var work int
+	q := fmt.Sprintf("SELECT date, (SELECT work FROM %s t WHERE t.id = e.type_id) FROM %s e WHERE user_id=? ORDER BY date DESC LIMIT 1", tbl("type"), tbl("entries"))
+	if err := db.QueryRow(q, userID).Scan(&last, &work); err != nil {
+		return
+	}
+	if work != 1 {
+		return
+	}
+	ly, lm, ld := last.Date()
+	ny, nm, nd := now.Date()
+	if ly == ny && lm == nm && ld == nd {
+		return
+	}
+	midnight := time.Date(ly, lm, ld, 23, 59, 59, 0, last.Location())
+	// find non-work activity (prefer Break)
+	var nonWorkID int
+	if err := db.QueryRow("SELECT id FROM " + tbl("type") + " WHERE work=0 ORDER BY CASE WHEN status='Break' THEN 0 ELSE 1 END, id LIMIT 1").Scan(&nonWorkID); err != nil {
+		return
+	}
+	_, _ = db.Exec("INSERT INTO "+tbl("entries")+"(user_id, type_id, date) VALUES (?,?,?)", userID, nonWorkID, midnight)
 }
 
 // getUserEntriesDetailed returns detailed entries for a user within an optional date range [from, to]
 func getUserEntriesDetailed(userID int, from, to string) []EntryDetail {
-    db := getDB()
-    defer db.Close()
-    where := "WHERE e.user_id = @uid"
-    if strings.TrimSpace(from) != "" {
-        where += " AND date(e.date) >= date(@from)"
-    }
-    if strings.TrimSpace(to) != "" {
-        where += " AND date(e.date) <= date(@to)"
-    }
-    query := fmt.Sprintf(`
+	db := getDB()
+	defer db.Close()
+	where := "WHERE e.user_id = @uid"
+	if strings.TrimSpace(from) != "" {
+		where += " AND date(e.date) >= date(@from)"
+	}
+	if strings.TrimSpace(to) != "" {
+		where += " AND date(e.date) <= date(@to)"
+	}
+	query := fmt.Sprintf(`
         SELECT 
             e.id,
             u.id as user_id,
@@ -742,25 +765,29 @@ func getUserEntriesDetailed(userID int, from, to string) []EntryDetail {
         ORDER BY e.date DESC
         LIMIT 2000
     `, tbl("entries"), tbl("entries"), tbl("entries"), tbl("users"), tbl("departments"), tbl("type"), where)
-    args := []interface{}{sql.Named("uid", userID)}
-    if strings.TrimSpace(from) != "" { args = append(args, sql.Named("from", from)) }
-    if strings.TrimSpace(to) != "" { args = append(args, sql.Named("to", to)) }
-    rows, err := db.Query(query, args...)
-    if err != nil {
-        log.Printf("Query user entries failed: %v", err)
-        return nil
-    }
-    defer rows.Close()
-    var list []EntryDetail
-    for rows.Next() {
-        var e EntryDetail
-        if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
-            log.Printf("Scan user entry failed: %v", err)
-            continue
-        }
-        list = append(list, e)
-    }
-    return list
+	args := []interface{}{sql.Named("uid", userID)}
+	if strings.TrimSpace(from) != "" {
+		args = append(args, sql.Named("from", from))
+	}
+	if strings.TrimSpace(to) != "" {
+		args = append(args, sql.Named("to", to))
+	}
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		log.Printf("Query user entries failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	var list []EntryDetail
+	for rows.Next() {
+		var e EntryDetail
+		if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+			log.Printf("Scan user entry failed: %v", err)
+			continue
+		}
+		list = append(list, e)
+	}
+	return list
 }
 
 // ----------- UPDATE --------------------------------------------------
@@ -778,7 +805,7 @@ func updateUser(id, name, stampkey, email, password, role, position, departmentI
 		} else {
 			hashed = string(b)
 		}
-	query := fmt.Sprintf(`UPDATE %s
+		query := fmt.Sprintf(`UPDATE %s
 			  SET name=@name, stampkey=@sk, email=@mail, password=@pwd, role=@role, position=@pos, department_id=@dept
 						  WHERE id=@id`, tbl("users"))
 		_, err = db.Exec(query,
@@ -786,7 +813,7 @@ func updateUser(id, name, stampkey, email, password, role, position, departmentI
 			sql.Named("sk", stampkey),
 			sql.Named("mail", email),
 			sql.Named("pwd", hashed),
-	    sql.Named("role", role),
+			sql.Named("role", role),
 			sql.Named("pos", position),
 			sql.Named("dept", dept),
 			sql.Named("id", id),
@@ -817,58 +844,58 @@ func updateUser(id, name, stampkey, email, password, role, position, departmentI
 func getUserByEmail(email string) (User, bool) {
 	db := getDB()
 	defer db.Close()
-    query := fmt.Sprintf("SELECT id, name, email, COALESCE(password,''), COALESCE(role,'user'), stampkey, position, COALESCE(department_id,0), COALESCE(auto_checkout_midnight,0) FROM %s WHERE email=@mail", tbl("users"))
-    var u User
-    if err := db.QueryRow(query, sql.Named("mail", email)).Scan(&u.ID, &u.Name, &u.Email, &u.Password, &u.Role, &u.Stampkey, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
-        return User{}, false
-    }
-    return u, true
+	query := fmt.Sprintf("SELECT id, name, email, COALESCE(password,''), COALESCE(role,'user'), stampkey, position, COALESCE(department_id,0), COALESCE(auto_checkout_midnight,0) FROM %s WHERE email=@mail", tbl("users"))
+	var u User
+	if err := db.QueryRow(query, sql.Named("mail", email)).Scan(&u.ID, &u.Name, &u.Email, &u.Password, &u.Role, &u.Stampkey, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
+		return User{}, false
+	}
+	return u, true
 }
 
 // Lookup user by name
 func getUserByName(name string) (User, bool) {
-    db := getDB()
-    defer db.Close()
-    query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, COALESCE(department_id,0), COALESCE(auto_checkout_midnight,0) FROM %s WHERE name=@name", tbl("users"))
-    var u User
-    if err := db.QueryRow(query, sql.Named("name", name)).Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
-        return User{}, false
-    }
-    return u, true
+	db := getDB()
+	defer db.Close()
+	query := fmt.Sprintf("SELECT id, name, stampkey, email, COALESCE(password,''), COALESCE(role,'user'), position, COALESCE(department_id,0), COALESCE(auto_checkout_midnight,0) FROM %s WHERE name=@name", tbl("users"))
+	var u User
+	if err := db.QueryRow(query, sql.Named("name", name)).Scan(&u.ID, &u.Name, &u.Stampkey, &u.Email, &u.Password, &u.Role, &u.Position, &u.DepartmentID, &u.AutoCheckoutMidnight); err != nil {
+		return User{}, false
+	}
+	return u, true
 }
 
 // Return current status and timestamp for a user, if any
 func getCurrentStatusForUserID(userID int) (status string, at time.Time, ok bool) {
-    db := getDB()
-    defer db.Close()
-    row := db.QueryRow(fmt.Sprintf("SELECT status, date FROM %s WHERE user_id=@id", tbl("current_status")), sql.Named("id", userID))
-    var s string
-    var t time.Time
-    if err := row.Scan(&s, &t); err != nil {
-        return "", time.Time{}, false
-    }
-    return s, t, true
+	db := getDB()
+	defer db.Close()
+	row := db.QueryRow(fmt.Sprintf("SELECT status, date FROM %s WHERE user_id=@id", tbl("current_status")), sql.Named("id", userID))
+	var s string
+	var t time.Time
+	if err := row.Scan(&s, &t); err != nil {
+		return "", time.Time{}, false
+	}
+	return s, t, true
 }
 
 // Work hours filtered for a single user (by user name as in view)
 func getWorkHoursDataForUser(userName string) []WorkHoursData {
-    db := getDB()
-    defer db.Close()
-    rows, err := db.Query(fmt.Sprintf("SELECT user_name, work_date, work_hours FROM %s WHERE user_name=@u", tbl("work_hours")), sql.Named("u", userName))
-    if err != nil {
-        log.Printf("Query work_hours (user) failed: %v", err)
-        return nil
-    }
-    defer rows.Close()
-    var list []WorkHoursData
-    for rows.Next() {
-        var w WorkHoursData
-        if err := rows.Scan(&w.UserName, &w.WorkDate, &w.WorkHours); err != nil {
-            log.Fatal(err)
-        }
-        list = append(list, w)
-    }
-    return list
+	db := getDB()
+	defer db.Close()
+	rows, err := db.Query(fmt.Sprintf("SELECT user_name, work_date, work_hours FROM %s WHERE user_name=@u", tbl("work_hours")), sql.Named("u", userName))
+	if err != nil {
+		log.Printf("Query work_hours (user) failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	var list []WorkHoursData
+	for rows.Next() {
+		var w WorkHoursData
+		if err := rows.Scan(&w.UserName, &w.WorkDate, &w.WorkHours); err != nil {
+			log.Fatal(err)
+		}
+		list = append(list, w)
+	}
+	return list
 }
 
 func updateActivity(id, status, work, comment string) {
@@ -928,7 +955,7 @@ func getEntry(id string) EntryDetail {
 	db := getDB()
 	defer db.Close()
 
-    query := fmt.Sprintf(`
+	query := fmt.Sprintf(`
         SELECT 
             e.id,
             u.id as user_id,
@@ -960,13 +987,13 @@ func getEntry(id string) EntryDetail {
 		WHERE e.id = @id
 	`, tbl("entries"), tbl("entries"), tbl("entries"), tbl("users"), tbl("departments"), tbl("type"))
 
-    var e EntryDetail
-    if err := db.QueryRow(query, sql.Named("id", id)).
-        Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
-        log.Printf("Get entry failed: %v", err)
-        return EntryDetail{}
-    }
-    return e
+	var e EntryDetail
+	if err := db.QueryRow(query, sql.Named("id", id)).
+		Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+		log.Printf("Get entry failed: %v", err)
+		return EntryDetail{}
+	}
+	return e
 }
 
 // Delete functions
@@ -1096,17 +1123,17 @@ type UserActivitySummary struct {
 }
 
 type EntryDetail struct {
-    ID         int
-    UserID     int
-    UserName   string
-    Department string
-    ActivityID int
-    Activity   string
-    Date       string
-    Start      string
-    End        string
-    Duration   float64
-    Comment    string
+	ID         int
+	UserID     int
+	UserName   string
+	Department string
+	ActivityID int
+	Activity   string
+	Date       string
+	Start      string
+	End        string
+	Duration   float64
+	Comment    string
 }
 
 // Enhanced statistics functions
@@ -1279,7 +1306,7 @@ func getEntriesWithDetails() []EntryDetail {
 	db := getDB()
 	defer db.Close()
 
-    query := fmt.Sprintf(`
+	query := fmt.Sprintf(`
         SELECT 
             e.id,
             u.id as user_id,
@@ -1319,15 +1346,15 @@ func getEntriesWithDetails() []EntryDetail {
 	}
 	defer rows.Close()
 
-    var list []EntryDetail
-    for rows.Next() {
-        var e EntryDetail
-        if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
-            log.Printf("Scan entry detail failed: %v", err)
-            continue
-        }
-        list = append(list, e)
-    }
+	var list []EntryDetail
+	for rows.Next() {
+		var e EntryDetail
+		if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+			log.Printf("Scan entry detail failed: %v", err)
+			continue
+		}
+		list = append(list, e)
+	}
 	return list
 }
 
@@ -1395,14 +1422,15 @@ func getCalendarEntries(startDate, endDate time.Time, userFilter, activityFilter
 	}
 
 	return entries
+}
 
 // getEntriesWithDetailsFiltered returns filtered time entries with details
 func getEntriesWithDetailsFiltered(fromDate, toDate, department, user, activity, limit string) []EntryDetail {
-    db := getDB()
-    defer db.Close()
+	db := getDB()
+	defer db.Close()
 
-    // Build dynamic query with filters
-    query := fmt.Sprintf(`
+	// Build dynamic query with filters
+	query := fmt.Sprintf(`
         SELECT e.id, e.user_id, u.name as user_name, 
                COALESCE(d.name, 'No Department') as department,
                e.type_id, t.status as activity, 
@@ -1417,119 +1445,119 @@ func getEntriesWithDetailsFiltered(fromDate, toDate, department, user, activity,
         LEFT JOIN %s t ON e.type_id = t.id
         WHERE 1=1`, tbl("entries"), tbl("users"), tbl("departments"), tbl("type"))
 
-    var args []interface{}
-    
-    // Add date range filters
-    if fromDate != "" {
-        query += " AND DATE(e.timestamp) >= ?"
-        args = append(args, fromDate)
-    }
-    if toDate != "" {
-        query += " AND DATE(e.timestamp) <= ?"
-        args = append(args, toDate)
-    }
-    
-    // Add department filter
-    if department != "" && department != "0" {
-        query += " AND u.department_id = ?"
-        args = append(args, department)
-    }
-    
-    // Add user filter
-    if user != "" && user != "0" {
-        query += " AND e.user_id = ?"
-        args = append(args, user)
-    }
-    
-    // Add activity filter
-    if activity != "" && activity != "0" {
-        query += " AND e.type_id = ?"
-        args = append(args, activity)
-    }
+	var args []interface{}
 
-    query += " ORDER BY e.timestamp DESC"
-    
-    // Add limit for preview
-    if limit != "" && limit != "0" {
-        query += " LIMIT ?"
-        if limitInt, err := strconv.Atoi(limit); err == nil {
-            args = append(args, limitInt)
-        }
-    }
+	// Add date range filters
+	if fromDate != "" {
+		query += " AND DATE(e.timestamp) >= ?"
+		args = append(args, fromDate)
+	}
+	if toDate != "" {
+		query += " AND DATE(e.timestamp) <= ?"
+		args = append(args, toDate)
+	}
 
-    rows, err := db.Query(query, args...)
-    if err != nil {
-        log.Printf("Query filtered entries failed: %v", err)
-        return nil
-    }
-    defer rows.Close()
+	// Add department filter
+	if department != "" && department != "0" {
+		query += " AND u.department_id = ?"
+		args = append(args, department)
+	}
 
-    var list []EntryDetail
-    for rows.Next() {
-        var e EntryDetail
-        if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
-            log.Printf("Scan filtered entry detail failed: %v", err)
-            continue
-        }
-        list = append(list, e)
-    }
-    return list
+	// Add user filter
+	if user != "" && user != "0" {
+		query += " AND e.user_id = ?"
+		args = append(args, user)
+	}
+
+	// Add activity filter
+	if activity != "" && activity != "0" {
+		query += " AND e.type_id = ?"
+		args = append(args, activity)
+	}
+
+	query += " ORDER BY e.timestamp DESC"
+
+	// Add limit for preview
+	if limit != "" && limit != "0" {
+		query += " LIMIT ?"
+		if limitInt, err := strconv.Atoi(limit); err == nil {
+			args = append(args, limitInt)
+		}
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		log.Printf("Query filtered entries failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var list []EntryDetail
+	for rows.Next() {
+		var e EntryDetail
+		if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+			log.Printf("Scan filtered entry detail failed: %v", err)
+			continue
+		}
+		list = append(list, e)
+	}
+	return list
 }
 
 // getWorkHoursDataFiltered returns filtered work hours data
 func getWorkHoursDataFiltered(fromDate, toDate, user, limit string) []WorkHoursData {
-    db := getDB()
-    defer db.Close()
+	db := getDB()
+	defer db.Close()
 
-    // Build dynamic query with filters
-    query := fmt.Sprintf(`
+	// Build dynamic query with filters
+	query := fmt.Sprintf(`
         SELECT user_name, work_date, work_hours 
         FROM %s
         WHERE 1=1`, tbl("work_hours"))
 
-    var args []interface{}
-    
-    // Add date range filters
-    if fromDate != "" {
-        query += " AND work_date >= ?"
-        args = append(args, fromDate)
-    }
-    if toDate != "" {
-        query += " AND work_date <= ?"
-        args = append(args, toDate)
-    }
-    
-    // Add user filter
-    if user != "" {
-        query += " AND user_name = ?"
-        args = append(args, user)
-    }
+	var args []interface{}
 
-    query += " ORDER BY work_date DESC"
-    
-    // Add limit for preview
-    if limit != "" && limit != "0" {
-        query += " LIMIT ?"
-        if limitInt, err := strconv.Atoi(limit); err == nil {
-            args = append(args, limitInt)
-        }
-    }
+	// Add date range filters
+	if fromDate != "" {
+		query += " AND work_date >= ?"
+		args = append(args, fromDate)
+	}
+	if toDate != "" {
+		query += " AND work_date <= ?"
+		args = append(args, toDate)
+	}
 
-    rows, err := db.Query(query, args...)
-    if err != nil {
-        log.Printf("Query filtered work hours failed: %v", err)
-        return nil
-    }
-    defer rows.Close()
+	// Add user filter
+	if user != "" {
+		query += " AND user_name = ?"
+		args = append(args, user)
+	}
 
-    var list []WorkHoursData
-    for rows.Next() {
-        var wh WorkHoursData
-        if err := rows.Scan(&wh.UserName, &wh.WorkDate, &wh.WorkHours); err != nil {
-            log.Printf("Scan filtered work hours failed: %v", err)
-            continue
-        }
-        list = append(list, wh)
-    }
-    return list
+	query += " ORDER BY work_date DESC"
+
+	// Add limit for preview
+	if limit != "" && limit != "0" {
+		query += " LIMIT ?"
+		if limitInt, err := strconv.Atoi(limit); err == nil {
+			args = append(args, limitInt)
+		}
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		log.Printf("Query filtered work hours failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var list []WorkHoursData
+	for rows.Next() {
+		var wh WorkHoursData
+		if err := rows.Scan(&wh.UserName, &wh.WorkDate, &wh.WorkHours); err != nil {
+			log.Printf("Scan filtered work hours failed: %v", err)
+			continue
+		}
+		list = append(list, wh)
+	}
+	return list
 }

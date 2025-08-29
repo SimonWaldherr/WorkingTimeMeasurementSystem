@@ -1,14 +1,14 @@
 package main
 
 import (
-    "bytes"
-    "embed"
-    "html/template"
-    "net/http"
-    "os"
-    "path"
-    "path/filepath"
-    "strings"
+	"bytes"
+	"embed"
+	"html/template"
+	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 )
 
 //go:embed templates/*.html
@@ -75,58 +75,65 @@ func buildMeta(r *http.Request, title string) MetaInfo {
 }
 
 func renderTemplate(w http.ResponseWriter, r *http.Request, page string, data interface{}) {
-    // Clone base to avoid polluting it
-    tmpl, err := base.Clone()
-    if err != nil {
-        http.Error(w, "template clone error: "+err.Error(), http.StatusInternalServerError)
-        return
-    }
+	// Clone base to avoid polluting it
+	tmpl, err := base.Clone()
+	if err != nil {
+		http.Error(w, "template clone error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-    pageFile := path.Join("templates", page+".html")
+	pageFile := path.Join("templates", page+".html")
 
-    // Tenant-aware overrides: tenant/<host>/templates/{base,header,footer,page}.html
-    var safeHost string
-    if r != nil {
-        host := r.Host
-        if idx := strings.IndexByte(host, ':'); idx >= 0 { host = host[:idx] }
-        safeHost = strings.ToLower(strings.ReplaceAll(host, "/", "-"))
-    }
+	// Tenant-aware overrides: tenant/<host>/templates/{base,header,footer,page}.html
+	var safeHost string
+	if r != nil {
+		host := r.Host
+		if idx := strings.IndexByte(host, ':'); idx >= 0 {
+			host = host[:idx]
+		}
+		safeHost = strings.ToLower(strings.ReplaceAll(host, "/", "-"))
+	}
 
-    // Helper to test file existence
-    exists := func(p string) bool { if info, err := os.Stat(p); err == nil && !info.IsDir() { return true }; return false }
-    // Parse tenant overrides for base/header/footer if present
-    if safeHost != "" {
-        for _, name := range []string{"base", "header", "footer"} {
-            tf := filepath.Join("tenant", safeHost, "templates", name+".html")
-            if exists(tf) {
-                if _, err := tmpl.ParseFiles(tf); err != nil {
-                    http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
-                    return
-                }
-            }
-        }
-    }
+	// Helper to test file existence
+	exists := func(p string) bool {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return true
+		}
+		return false
+	}
+	// Parse tenant overrides for base/header/footer if present
+	if safeHost != "" {
+		for _, name := range []string{"base", "header", "footer"} {
+			tf := filepath.Join("tenant", safeHost, "templates", name+".html")
+			if exists(tf) {
+				if _, err := tmpl.ParseFiles(tf); err != nil {
+					http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
+			}
+		}
+	}
 
 	// Check if base was loaded from disk or embed by checking the type of base (optional)
 	// or just attempt to parse from disk first if folder exists,
 	// else parse from embedded FS
 
-    if safeHost != "" {
-        tenantPage := filepath.Join("tenant", safeHost, "templates", page+".html")
-        if exists(tenantPage) {
-            tmpl, err = tmpl.ParseFiles(tenantPage)
-        } else if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
-            tmpl, err = tmpl.ParseFiles(pageFile)
-        } else {
-            tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
-        }
-    } else {
-        if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
-            tmpl, err = tmpl.ParseFiles(pageFile)
-        } else {
-            tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
-        }
-    }
+	if safeHost != "" {
+		tenantPage := filepath.Join("tenant", safeHost, "templates", page+".html")
+		if exists(tenantPage) {
+			tmpl, err = tmpl.ParseFiles(tenantPage)
+		} else if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
+			tmpl, err = tmpl.ParseFiles(pageFile)
+		} else {
+			tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
+		}
+	} else {
+		if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
+			tmpl, err = tmpl.ParseFiles(pageFile)
+		} else {
+			tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
+		}
+	}
 
 	if err != nil {
 		http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
@@ -156,42 +163,55 @@ type TableData struct {
 
 // renderHTMLTable renders a simple HTML table
 func renderHTMLTable(w http.ResponseWriter, r *http.Request, title string, td TableData) {
-    // Clone base to avoid polluting it
-    tmpl, err := base.Clone()
-    if err != nil {
-        http.Error(w, "template clone error: "+err.Error(), http.StatusInternalServerError)
-        return
-    }
+	// Clone base to avoid polluting it
+	tmpl, err := base.Clone()
+	if err != nil {
+		http.Error(w, "template clone error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-    pageFile := path.Join("templates", "table.html")
-    // Tenant-aware overrides similar to renderTemplate
-    var safeHost string
-    if r != nil {
-        host := r.Host
-        if idx := strings.IndexByte(host, ':'); idx >= 0 { host = host[:idx] }
-        safeHost = strings.ToLower(strings.ReplaceAll(host, "/", "-"))
-    }
-    exists := func(p string) bool { if info, err := os.Stat(p); err == nil && !info.IsDir() { return true }; return false }
-    if safeHost != "" {
-        for _, name := range []string{"base", "header", "footer"} {
-            tf := filepath.Join("tenant", safeHost, "templates", name+".html")
-            if exists(tf) { tmpl, err = tmpl.ParseFiles(tf); if err != nil { http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError); return } }
-        }
-        tenantPage := filepath.Join("tenant", safeHost, "templates", "table.html")
-        if exists(tenantPage) {
-            tmpl, err = tmpl.ParseFiles(tenantPage)
-        } else if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
-            tmpl, err = tmpl.ParseFiles(pageFile)
-        } else {
-            tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
-        }
-    } else {
-        if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
-            tmpl, err = tmpl.ParseFiles(pageFile)
-        } else {
-            tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
-        }
-    }
+	pageFile := path.Join("templates", "table.html")
+	// Tenant-aware overrides similar to renderTemplate
+	var safeHost string
+	if r != nil {
+		host := r.Host
+		if idx := strings.IndexByte(host, ':'); idx >= 0 {
+			host = host[:idx]
+		}
+		safeHost = strings.ToLower(strings.ReplaceAll(host, "/", "-"))
+	}
+	exists := func(p string) bool {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return true
+		}
+		return false
+	}
+	if safeHost != "" {
+		for _, name := range []string{"base", "header", "footer"} {
+			tf := filepath.Join("tenant", safeHost, "templates", name+".html")
+			if exists(tf) {
+				tmpl, err = tmpl.ParseFiles(tf)
+				if err != nil {
+					http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
+			}
+		}
+		tenantPage := filepath.Join("tenant", safeHost, "templates", "table.html")
+		if exists(tenantPage) {
+			tmpl, err = tmpl.ParseFiles(tenantPage)
+		} else if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
+			tmpl, err = tmpl.ParseFiles(pageFile)
+		} else {
+			tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
+		}
+	} else {
+		if info, statErr := os.Stat("templates"); statErr == nil && info.IsDir() {
+			tmpl, err = tmpl.ParseFiles(pageFile)
+		} else {
+			tmpl, err = tmpl.ParseFS(templatesFS, pageFile)
+		}
+	}
 
 	if err != nil {
 		http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
