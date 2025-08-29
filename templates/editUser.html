@@ -70,6 +70,16 @@
                 <option value="admin" {{ if eq .Content.User.Role "admin" }}selected{{ end }}>Admin</option>
               </select>
             </div>
+
+            <!-- Auto checkout at midnight -->
+            <div class="col-md-6">
+              <div class="form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="auto_checkout_midnight" name="auto_checkout_midnight" {{ if eq .Content.User.AutoCheckoutMidnight 1 }}checked{{ end }}>
+                <label class="form-check-label" for="auto_checkout_midnight">
+                  Auto stamp out at 23:59:59
+                </label>
+              </div>
+            </div>
             
             <!-- Department -->
             <div class="col-12">
@@ -230,6 +240,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {{ end }}
-
 
 

@@ -8,16 +8,17 @@ import (
 
 	//"database/sql"
 
-	"log"
-	"net/http"
-	"os"
+    "log"
+    "net/http"
+    "os"
 
-	"strings"
-	"time"
-	"strconv"
-	"golang.org/x/crypto/bcrypt"
+    "strings"
+    "time"
+    "strconv"
+    "golang.org/x/crypto/bcrypt"
 
-	"github.com/gorilla/sessions"
+    "github.com/gorilla/sessions"
+    "path/filepath"
 )
 
 // WorkHoursData is a struct that represents the data needed to display work hours
@@ -124,7 +125,7 @@ func main() {
 	}
 	log.Printf("  Credentials file = %s", "credentials.csv")
 
-	mux := http.NewServeMux()
+    mux := http.NewServeMux()
 
 	// Login & Logout
 	mux.Handle("/login", loginHandler(users))
@@ -140,18 +141,18 @@ func main() {
 	mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
 	mux.Handle("/current_status", http.HandlerFunc(currentStatusHandler))
 
-	// protected actions
-	mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
-	mux.Handle("/editUser", basicAuthMiddleware(users, http.HandlerFunc(editUserHandler)))
+    // protected actions
+    mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
+    mux.Handle("/editUser", basicAuthMiddleware(users, http.HandlerFunc(editUserHandler)))
 	mux.Handle("/createActivity", basicAuthMiddleware(users, http.HandlerFunc(createActivityHandler)))
 	mux.Handle("/createDepartment", basicAuthMiddleware(users, http.HandlerFunc(createDepartmentHandler)))
 	mux.Handle("/work_hours", basicAuthMiddleware(users, http.HandlerFunc(workHoursHandler)))
 	mux.Handle("/work_status", basicAuthMiddleware(users, http.HandlerFunc(workStatusHandler)))
 	//mux.Handle("/entries_view", basicAuthMiddleware(users, http.HandlerFunc(entriesViewHandler)))
 
-	// Enhanced statistics and management
-	mux.Handle("/dashboard", basicAuthMiddleware(users, http.HandlerFunc(dashboardHandler)))
-	mux.Handle("/entries", basicAuthMiddleware(users, http.HandlerFunc(entriesHandler)))
+    // Enhanced statistics and management
+    mux.Handle("/dashboard", basicAuthMiddleware(users, http.HandlerFunc(dashboardHandler)))
+    mux.Handle("/entries", basicAuthMiddleware(users, http.HandlerFunc(entriesHandler)))
 	mux.Handle("/editEntry", basicAuthMiddleware(users, http.HandlerFunc(editEntryHandler)))
 	mux.Handle("/editActivity", basicAuthMiddleware(users, http.HandlerFunc(editActivityHandler)))
 	mux.Handle("/editDepartment", basicAuthMiddleware(users, http.HandlerFunc(editDepartmentHandler)))
@@ -160,19 +161,37 @@ func main() {
 	mux.Handle("/deleteDepartment", basicAuthMiddleware(users, http.HandlerFunc(deleteDepartmentHandler)))
 	mux.Handle("/deleteUser", basicAuthMiddleware(users, http.HandlerFunc(deleteUserHandler)))
 
-	// barcodes page
-	mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
+    // barcodes page
+    mux.Handle("/barcodes", basicAuthMiddleware(users, http.HandlerFunc(barcodesHandler)))
 
-	// static files (CSS, JS, images)
-	fs := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+    // Admin downloads (CSV)
+    mux.Handle("/admin/download/entries.csv", adminOnly(http.HandlerFunc(downloadEntriesCSV)))
+    mux.Handle("/admin/download/work_hours.csv", adminOnly(http.HandlerFunc(downloadWorkHoursCSV)))
+
+    // User self history (no session required; verifies by email+password per request)
+    mux.HandleFunc("/myHistory", myHistoryHandler)
+
+    // static files (CSS, JS, images) with tenant override
+    defaultStatic := http.StripPrefix("/static/", http.FileServer(http.Dir("static")))
+    mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
+        rel := strings.TrimPrefix(r.URL.Path, "/static/")
+        host := r.Host
+        if idx := strings.IndexByte(host, ':'); idx >= 0 { host = host[:idx] }
+        safe := strings.ToLower(strings.ReplaceAll(host, "/", "-"))
+        tenantPath := filepath.Join("tenant", safe, "static", rel)
+        if info, err := os.Stat(tenantPath); err == nil && !info.IsDir() {
+            http.ServeFile(w, r, tenantPath)
+            return
+        }
+        defaultStatic.ServeHTTP(w, r)
+    })
 
 	// clock in/out via dropdown
 	mux.Handle("/clockInOut", http.HandlerFunc(clockInOut))
 
-	// barcode-driven bulk clock
-	mux.Handle("/scan", http.HandlerFunc(scanHandler))
-	mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
+    // barcode-driven bulk clock
+    mux.Handle("/scan", http.HandlerFunc(scanHandler))
+    mux.Handle("/bulkClock", http.HandlerFunc(bulkClockHandler))
 
 	log.Printf("App will listen on http://localhost:8083")
 	log.Printf("Starting server on :8083…")
@@ -206,39 +225,40 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginHandler(users map[string]AuthUser) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			renderTemplate(w, r, "login", nil)
-			return
-		}
-		// POST
-		username := r.FormValue("username")
-		password := r.FormValue("password")
-		user, ok := users[username]
-		if ok && user.Password == password {
-			session, _ := store.Get(r, "session")
-			session.Values["username"] = user.Username
-			session.Values["role"] = user.Role
-			session.Options = &sessions.Options{Path: "/", MaxAge: sessionDuration * 60, HttpOnly: true}
-			session.Save(r, w)
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
+    return func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet {
+            renderTemplate(w, r, "login", nil)
+            return
+        }
+        // POST
+        username := r.FormValue("username")
+        password := r.FormValue("password")
+        user, ok := users[username]
+        if ok && user.Password == password {
+            session, _ := store.Get(r, "session")
+            session.Values["username"] = user.Username
+            session.Values["role"] = user.Role
+            session.Options = &sessions.Options{Path: "/", MaxAge: sessionDuration * 60, HttpOnly: true}
+            session.Save(r, w)
+            http.Redirect(w, r, "/", http.StatusFound)
+            return
+        }
 
-		// Try DB users: treat username as email
-		if u, exists := getUserByEmail(username); exists && u.Password != "" {
-			if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err == nil {
-				activities := getActivities()
-				renderTemplate(w, r, "passwordStamp", map[string]any{
-					"User":       u,
-					"Activities": activities,
-					"Pwd":        password,
-				})
-				return
-			}
-		}
-		renderTemplate(w, r, "login", map[string]any{"Error": "Benutzername oder Passwort falsch."})
-	}
+        // Try DB users: treat username as email and set a normal session
+        if u, exists := getUserByEmail(username); exists && u.Password != "" {
+            if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err == nil {
+                session, _ := store.Get(r, "session")
+                // prefer displaying the DB user's name
+                session.Values["username"] = u.Name
+                session.Values["role"] = u.Role
+                session.Options = &sessions.Options{Path: "/", MaxAge: sessionDuration * 60, HttpOnly: true}
+                session.Save(r, w)
+                http.Redirect(w, r, "/", http.StatusFound)
+                return
+            }
+        }
+        renderTemplate(w, r, "login", map[string]any{"Error": "Benutzername oder Passwort falsch."})
+    }
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +267,19 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	session.Options.MaxAge = -1 // Löscht das Cookie
 	session.Save(r, w)
 	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// adminOnly middleware: requires logged-in CSV user with role=admin
+func adminOnly(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        session, _ := store.Get(r, "session")
+        role, _ := session.Values["role"].(string)
+        if role != "admin" && role != "Admin" && role != "ADMIN" {
+            http.Error(w, "Forbidden", http.StatusForbidden)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
 }
 
 // Entry-Struktur anpassen je nach deiner DB
@@ -300,19 +333,21 @@ func editUserHandler(w http.ResponseWriter, r *http.Request) {
 			Departments []Department
 		}{u, depts})
 		return
-	} else if r.Method == http.MethodPost {
-		id := r.FormValue("id")
-		updateUser(id,
-			r.FormValue("name"),
-			r.FormValue("stampkey"),
-			r.FormValue("email"),
-			r.FormValue("password"),
-			r.FormValue("role"),
-			r.FormValue("position"),
-			r.FormValue("department_id"),
-		)
-	}
-	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
+    } else if r.Method == http.MethodPost {
+        id := r.FormValue("id")
+        updateUser(id,
+            r.FormValue("name"),
+            r.FormValue("stampkey"),
+            r.FormValue("email"),
+            r.FormValue("password"),
+            r.FormValue("role"),
+            r.FormValue("position"),
+            r.FormValue("department_id"),
+        )
+        // update auto-checkout flag
+        setUserAutoCheckout(id, r.FormValue("auto_checkout_midnight") == "on")
+    }
+    http.Redirect(w, r, "/addUser", http.StatusSeeOther)
 }
 
 // addActivityHandler shows the add-activity page
@@ -337,18 +372,25 @@ func addDepartmentHandler(w http.ResponseWriter, r *http.Request) {
 
 // createUserHandler processes adding a new user
 func createUserHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost {
-		createUser(
-			r.FormValue("name"),
-			r.FormValue("stampkey"),
-			r.FormValue("email"),
-			r.FormValue("password"),
-			r.FormValue("role"),
-			r.FormValue("position"),
-			r.FormValue("department_id"),
-		)
-	}
-	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
+    if r.Method == http.MethodPost {
+        createUser(
+            r.FormValue("name"),
+            r.FormValue("stampkey"),
+            r.FormValue("email"),
+            r.FormValue("password"),
+            r.FormValue("role"),
+            r.FormValue("position"),
+            r.FormValue("department_id"),
+        )
+        // Set auto-checkout flag if provided
+        // Need the created user id; simplest: lookup by email+name (could be non-unique on name; email is unique)
+        if email := r.FormValue("email"); email != "" {
+            if u, ok := getUserByEmail(email); ok {
+                setUserAutoCheckout(strconv.Itoa(u.ID), r.FormValue("auto_checkout_midnight") == "on")
+            }
+        }
+    }
+    http.Redirect(w, r, "/addUser", http.StatusSeeOther)
 }
 
 func barcodesHandler(w http.ResponseWriter, r *http.Request) {
@@ -573,21 +615,23 @@ func bulkClockHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, _ := db.Begin()
-	stmt, _ := tx.Prepare("INSERT INTO entries(date, type_id, user_id) VALUES (?, ?, ?)")
-	defer stmt.Close()
+    tx, _ := db.Begin()
+    stmt, _ := tx.Prepare("INSERT INTO entries(date, type_id, user_id) VALUES (?, ?, ?)")
+    defer stmt.Close()
 
-	now := time.Now().Format(time.RFC3339)
-	for _, code := range req.UserCodes {
-		var userID int
-		if err := db.QueryRow("SELECT id FROM users WHERE stampkey = ?", code).Scan(&userID); err != nil {
-			// skip unknown cards
-			continue
-		}
-		stmt.Exec(now, activityID, userID)
-	}
-	tx.Commit()
-	w.WriteHeader(http.StatusNoContent)
+    now := time.Now().Format(time.RFC3339)
+    for _, code := range req.UserCodes {
+        var userID int
+        if err := db.QueryRow("SELECT id FROM users WHERE stampkey = ?", code).Scan(&userID); err != nil {
+            // skip unknown cards
+            continue
+        }
+        // auto checkout at midnight if flagged and necessary
+        ensureMidnightAutoCheckoutWithDB(db, userID, time.Now())
+        stmt.Exec(now, activityID, userID)
+    }
+    tx.Commit()
+    w.WriteHeader(http.StatusNoContent)
 }
 
 // Enhanced dashboard handler
@@ -788,4 +832,62 @@ func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.FormValue("id")
 	deleteUser(id)
 	http.Redirect(w, r, "/addUser", http.StatusSeeOther)
+}
+
+// downloadEntriesCSV streams recent entries with details as CSV (admin only)
+func downloadEntriesCSV(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/csv")
+    w.Header().Set("Content-Disposition", "attachment; filename=entries.csv")
+    enc := csv.NewWriter(w)
+    _ = enc.Write([]string{"ID", "User", "Department", "Activity", "Date", "Start", "End", "DurationHours", "Comment"})
+    for _, e := range getEntriesWithDetails() {
+        enc.Write([]string{strconv.Itoa(e.ID), e.UserName, e.Department, e.Activity, e.Date, e.Start, e.End, strconv.FormatFloat(e.Duration, 'f', 2, 64), e.Comment})
+    }
+    enc.Flush()
+}
+
+// downloadWorkHoursCSV streams aggregated work hours as CSV (admin only)
+func downloadWorkHoursCSV(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/csv")
+    w.Header().Set("Content-Disposition", "attachment; filename=work_hours.csv")
+    enc := csv.NewWriter(w)
+    _ = enc.Write([]string{"User", "Date", "WorkHours"})
+    for _, wrow := range getWorkHoursData() {
+        enc.Write([]string{wrow.UserName, wrow.WorkDate, strconv.FormatFloat(wrow.WorkHours, 'f', 2, 64)})
+    }
+    enc.Flush()
+}
+
+// myHistoryHandler lets a user view their own history by email+password with optional date range
+func myHistoryHandler(w http.ResponseWriter, r *http.Request) {
+    switch r.Method {
+    case http.MethodGet:
+        renderTemplate(w, r, "myHistory", nil)
+        return
+    case http.MethodPost:
+        email := r.FormValue("email")
+        pwd := r.FormValue("pwd")
+        from := r.FormValue("from")
+        to := r.FormValue("to")
+        u, ok := getUserByEmail(email)
+        if !ok || u.Password == "" {
+            renderTemplate(w, r, "myHistory", map[string]any{"Error": "Unknown email or no password set."})
+            return
+        }
+        if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(pwd)); err != nil {
+            renderTemplate(w, r, "myHistory", map[string]any{"Error": "Wrong password."})
+            return
+        }
+        entries := getUserEntriesDetailed(u.ID, from, to)
+        renderTemplate(w, r, "myHistory", map[string]any{
+            "User":    u,
+            "From":    from,
+            "To":      to,
+            "Entries": entries,
+        })
+        return
+    default:
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 }

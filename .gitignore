@@ -4,3 +4,4 @@ wtm
 templates.zip
 time_tracking.test.db
 /database/*.db
+time_tracking.db

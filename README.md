@@ -4,7 +4,7 @@
 
 This project demonstrates how to create a simple timekeeping system using Golang and SQLite. The application allows users to clock in and out, track work hours, and view their current status. The data is organized by departments, users, and activities.
 
-Please note that this project is meant for demonstration purposes only and does not include any authentication, authorization, or security features. It is meant to showcase the ease of programming a timekeeping system in Golang.
+Please note that this project is meant for demonstration purposes only and does not include production-grade authentication, authorization, or security features. It showcases the ease of programming a timekeeping system in Golang.
 
 ## Getting Started
 
@@ -13,8 +13,9 @@ To run the project, follow these steps:
 * Install Golang
 * Clone the repository.
 * Change to the project directory.
-* Run go build to compile the project.
-* Run the compiled binary to start the web server.
+* Run go build to compile the project, or run directly with `go run .`.
+* Alternatively, use `./test.sh` to start with a local SQLite DB (`time_tracking.test.db`).
+* Multi-tenant: per-host data lives under `tenant/<host>/time_tracking.db` (auto-created).
 
 ## Usage
 
@@ -25,6 +26,9 @@ Before clocking in and out, you need to create a department, then a user and an 
 * Navigate to the /addUser page to create a new user and associate them with a department.
 * Navigate to the /addActivity page to create a new activity.
 * Use the form on the index page to clock in and out by selecting a user and an activity from the dropdown menus.
+* Users can view their own history at `/myHistory` (email + password).
+* Admins can export CSVs from the Admin menu (Entries, Work Hours).
+* Tenant overrides: place `templates/*.html` or `static/*` under `tenant/<host>/` to override defaults.
 
 ## Features
 
@@ -34,6 +38,9 @@ The timekeeping system includes the following features:
 * Clock in and out with a user and an activity.
 * View work hours per user per day.
 * View the current status of all employees.
+* Admin downloads: export Entries and Work Hours as CSV (`/admin/download/...`).
+* User self‑service: personal history at `/myHistory` using email + password.
+* Optional per‑user auto checkout at 23:59:59 (toggle in Edit User).
 
 ## Future Features
 

@@ -10,14 +10,17 @@
   {{ end }}
   <form method="post" action="/login">
     <div class="mb-3">
-      <label for="username" class="form-label">Benutzername</label>
-      <input type="text" class="form-control" id="username" name="username" autofocus required>
+      <label for="username" class="form-label">Username or Email</label>
+      <input type="text" class="form-control" id="username" name="username" placeholder="e.g. john.doe or john@example.com" autofocus required>
     </div>
     <div class="mb-3">
       <label for="password" class="form-label">Passwort</label>
       <input type="password" class="form-control" id="password" name="password" required>
     </div>
     <button type="submit" class="btn btn-success w-100"><i class="bi bi-box-arrow-in-right"></i> Login</button>
+    <div class="text-center mt-3">
+      <a href="/passwordStamp" class="small">Prefer quick password-based stamping? Open password stamping.</a>
+    </div>
   </form>
 </div>
 {{ end }}

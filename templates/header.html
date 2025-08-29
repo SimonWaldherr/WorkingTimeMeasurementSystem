@@ -15,6 +15,7 @@
         <li class="nav-item"><a class="nav-link" href="/clockInOutForm">Ein-/Ausstempeln</a></li>
   <li class="nav-item"><a class="nav-link" href="/passwordStamp">Passwort-Stempeln</a></li>
         <li class="nav-item"><a class="nav-link" href="/current_status">Current Status</a></li>
+        <li class="nav-item"><a class="nav-link" href="/myHistory">My History</a></li>
         {{ if .Meta.IsAdmin }}
         <li class="nav-item"><a class="nav-link" href="/dashboard"><i class="bi bi-graph-up"></i> Dashboard</a></li>
         <li class="nav-item"><a class="nav-link" href="/entries"><i class="bi bi-list-ul"></i> Entries</a></li>
@@ -27,8 +28,15 @@
             <li><hr class="dropdown-divider"></li>
             <li><a class="dropdown-item" href="/barcodes">Barcodes</a></li>
             <li><a class="dropdown-item" href="/work_hours">Work Hours Overview</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="/admin/download/entries.csv">Download Entries (CSV)</a></li>
+            <li><a class="dropdown-item" href="/admin/download/work_hours.csv">Download Work Hours (CSV)</a></li>
           </ul>
         </li>
+        {{ end }}
+        {{ if .Meta.IsAuthenticated }}
+        <li class="nav-item d-none d-lg-block"><span class="navbar-text text-light mx-2">Hi, {{ .Meta.Username }}</span></li>
+        <li class="nav-item"><a class="btn btn-sm btn-outline-light ms-lg-2" href="/logout">Log out</a></li>
         {{ end }}
       </ul>
     </div>
