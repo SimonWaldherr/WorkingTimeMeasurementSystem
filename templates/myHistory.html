@@ -1,0 +1,77 @@
+{{ define "title" }}My Work History{{ end }}
+
+{{ define "content" }}
+<div class="row">
+  <div class="col-lg-4">
+    <div class="card mb-4">
+      <div class="card-header"><strong>View My History</strong></div>
+      <div class="card-body">
+        <form method="POST" action="/myHistory">
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" name="email" required value="{{ if .Content.User }}{{ .Content.User.Email }}{{ end }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-control" name="pwd" {{ if .Content.User }}placeholder="Re-enter to refresh"{{ end }} required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">From</label>
+            <input type="date" class="form-control" name="from" value="{{ .Content.From }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">To</label>
+            <input type="date" class="form-control" name="to" value="{{ .Content.To }}">
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Show</button>
+          </div>
+        </form>
+        {{ if .Content.Error }}
+          <div class="alert alert-danger mt-3">{{ .Content.Error }}</div>
+        {{ end }}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    {{ if .Content.Entries }}
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Entries for {{ .Content.User.Name }}</strong>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Activity</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Dur. (h)</th>
+                <th>Comment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range .Content.Entries }}
+              <tr>
+                <td>{{ .Date }}</td>
+                <td>{{ .Activity }}</td>
+                <td>{{ .Start }}</td>
+                <td>{{ .End }}</td>
+                <td>{{ printf "%.2f" .Duration }}</td>
+                <td>{{ .Comment }}</td>
+              </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {{ else }}
+      <div class="alert alert-info">Enter your email and password to view your recent entries.</div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}
+
