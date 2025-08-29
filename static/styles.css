@@ -35,7 +35,7 @@ body {
 }
 
 .card-header {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(to bottom right, #51a8ff, #0d6efd)
   border-bottom: 1px solid rgba(0,0,0,0.05);
   padding: 1rem 1.25rem;
 }
@@ -52,7 +52,7 @@ body {
 }
 
 .table thead th {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(to bottom right, #51a8ff, #0d6efd)
   border-bottom: 2px solid #dee2e6;
   font-weight: 600;
   color: var(--dark);
@@ -182,7 +182,7 @@ body {
 }
 
 .modal-header {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(to bottom right, #51a8ff, #0d6efd)
   border-bottom: 1px solid rgba(0,0,0,0.05);
   border-radius: var(--border-radius) var(--border-radius) 0 0;
 }
