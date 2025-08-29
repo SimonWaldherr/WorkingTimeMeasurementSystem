@@ -14,8 +14,8 @@ import (
 	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	_ "modernc.org/sqlite"
 	"golang.org/x/crypto/bcrypt"
+	_ "modernc.org/sqlite"
 )
 
 //---------------------------------------------------------------------

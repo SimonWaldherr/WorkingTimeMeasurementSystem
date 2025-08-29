@@ -77,8 +77,13 @@
       <i class="bi bi-calendar-month text-success"></i> 
       {{ .Content.CalendarData.MonthName }} {{ .Content.CalendarData.Year }}
     </h5>
-    <div class="text-muted">
-      <small>Total hours are shown for each day</small>
+    <div class="d-flex gap-2 align-items-center">
+  <a class="btn btn-sm btn-outline-primary" href="/calendar/week?week={{ .Content.CurrentMonth }}-01&user={{ .Content.SelectedUser }}&activity={{ .Content.SelectedActivity }}">
+        <i class="bi bi-calendar-week"></i> Wochenansicht
+      </a>
+      <div class="text-muted">
+        <small>Nur Tagessumme je Tag</small>
+      </div>
     </div>
   </div>
   <div class="card-body p-0">
@@ -108,22 +113,7 @@
                 {{ end }}
               </div>
               
-              {{ if .Entries }}
-              <div class="entries-list">
-                {{ range .Entries }}
-                <div class="entry-item mb-1">
-                  <small class="d-block">
-                    <i class="bi {{ if .IsWork }}bi-briefcase text-success{{ else }}bi-pause-circle text-warning{{ end }}"></i>
-                    <strong>{{ .UserName }}</strong>
-                  </small>
-                  <small class="d-block text-muted">
-                    {{ .Activity }}
-                    {{ if gt .Hours 0.0 }}({{ printf "%.1f" .Hours }}h){{ end }}
-                  </small>
-                </div>
-                {{ end }}
-              </div>
-              {{ end }}
+              
             </td>
             {{ end }}
           </tr>

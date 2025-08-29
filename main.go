@@ -1,25 +1,19 @@
 package main
 
 import (
-	//"context"
-	//"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-
-	//"database/sql"
-
 	"log"
 	"net/http"
 	"os"
-
-	"golang.org/x/crypto/bcrypt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/sessions"
-	"path/filepath"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // WorkHoursData is a struct that represents the data needed to display work hours
@@ -76,6 +70,27 @@ type CalendarMonth struct {
 	Month     time.Month
 	MonthName string
 	Weeks     []CalendarWeek
+}
+
+// Weekly visualization structures
+type WeekViewDay struct {
+	Date       string
+	Weekday    string
+	Day        int
+	Segments   []WeekSegment // ordered segments during the day
+	WorkHours  float64
+	BreakHours float64
+	IsToday    bool
+}
+
+type WeekSegment struct {
+	StartHour float64 // hours since 0:00 (e.g., 8.5)
+	EndHour   float64
+	IsWork    bool
+	LeftPct   float64 // 0..100
+	WidthPct  float64 // 0..100
+	LeftCSS   string  // e.g., "12.5%"
+	WidthCSS  string  // e.g., "33.3%"
 }
 
 // loadCredentials loads the credentials from a CSV file
@@ -219,6 +234,8 @@ func main() {
 
 	// calendar page
 	mux.Handle("/calendar", basicAuthMiddleware(users, http.HandlerFunc(calendarHandler)))
+	// weekly page
+	mux.Handle("/calendar/week", basicAuthMiddleware(users, http.HandlerFunc(weekHandler)))
 
 	// Admin downloads page
 	mux.Handle("/admin/downloads", adminOnly(http.HandlerFunc(adminDownloadsHandler)))
@@ -530,6 +547,160 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, r, "calendar", data)
 }
 
+// weekHandler shows a 7-day week timeline with bars for work/break
+func weekHandler(w http.ResponseWriter, r *http.Request) {
+	// Inputs: week (any date within week or YYYY-01-02), user, activity
+	selectedUserID := r.URL.Query().Get("user")
+	selectedActivityID := r.URL.Query().Get("activity")
+	weekParam := r.URL.Query().Get("week")
+
+	// Determine target date
+	target := time.Now()
+	if weekParam != "" {
+		// try multiple formats
+		if t, err := time.Parse("2006-01-02", weekParam); err == nil {
+			target = t
+		} else if t2, err2 := time.Parse("2006-01", weekParam); err2 == nil {
+			target = t2
+		}
+	}
+	// normalize to Monday of the week
+	startOfWeek := target
+	for startOfWeek.Weekday() != time.Monday {
+		startOfWeek = startOfWeek.AddDate(0, 0, -1)
+	}
+	endOfWeek := startOfWeek.AddDate(0, 0, 6)
+
+	// Get raw entries spanning week
+	entries := getCalendarEntries(startOfWeek, endOfWeek, selectedUserID, selectedActivityID)
+	days := buildWeekDays(startOfWeek, entries)
+
+	data := struct {
+		Users            []User
+		Activities       []Activity
+		Days             []WeekViewDay
+		SelectedUser     string
+		SelectedActivity string
+		WeekLabel        string
+		PrevWeek         string
+		NextWeek         string
+		WeekParam        string
+		MonthParam       string
+	}{
+		Users:            getUsers(),
+		Activities:       getActivities(),
+		Days:             days,
+		SelectedUser:     selectedUserID,
+		SelectedActivity: selectedActivityID,
+		WeekLabel:        fmt.Sprintf("%s – %s", startOfWeek.Format("02.01."), endOfWeek.Format("02.01.2006")),
+		PrevWeek:         startOfWeek.AddDate(0, 0, -7).Format("2006-01-02"),
+		NextWeek:         startOfWeek.AddDate(0, 0, 7).Format("2006-01-02"),
+		WeekParam:        startOfWeek.Format("2006-01-02"),
+		MonthParam:       startOfWeek.Format("2006-01"),
+	}
+	renderTemplate(w, r, "week", data)
+}
+
+// buildWeekDays converts raw CalendarEntry events (point-in-time markers) into per-day segments
+func buildWeekDays(weekStart time.Time, entries []CalendarEntry) []WeekViewDay {
+	loc := weekStart.Location()
+	// group entries per day per user in chronological order
+	type key struct{ date string; user string }
+	groups := map[key][]CalendarEntry{}
+	for _, e := range entries {
+		dateKey := e.Date[:10]
+		k := key{date: dateKey, user: e.UserName}
+		groups[k] = append(groups[k], e)
+	}
+	// Build 7 days
+	days := make([]WeekViewDay, 0, 7)
+	todayStr := time.Now().Format("2006-01-02")
+	for i := 0; i < 7; i++ {
+		d := weekStart.AddDate(0, 0, i)
+		dateKey := d.Format("2006-01-02")
+		day := WeekViewDay{Date: dateKey, Weekday: d.Weekday().String(), Day: d.Day(), IsToday: dateKey == todayStr}
+
+		// For each user group that matches this date, translate events into segments
+		// We concatenate across users within the day (stack visually via multiple rows if needed by CSS)
+		// Here we just merge sequentially; overlapping handled by separate segments
+		var daySegs []WeekSegment
+		var workHours, breakHours float64
+		for k, list := range groups {
+			if k.date != dateKey {
+				continue
+			}
+			// entries are already ordered by time in query; if not, we would sort by Date
+			// Build segments between successive events for this user
+			for idx, ev := range list {
+				startTs := parseDBTimeInLoc(ev.Date, loc)
+				// end is next event or end of day if last and open; but our SQL already computed hours, not explicit end
+				var endTs time.Time
+				if idx+1 < len(list) {
+					endTs = parseDBTimeInLoc(list[idx+1].Date, loc)
+				} else {
+					// cap at 24:00 of same day
+					endTs = time.Date(d.Year(), d.Month(), d.Day(), 24, 0, 0, 0, loc)
+				}
+				// clamp to day bounds
+				dayStart := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, loc)
+				dayEnd := time.Date(d.Year(), d.Month(), d.Day(), 24, 0, 0, 0, loc)
+				if endTs.Before(dayStart) || startTs.After(dayEnd) {
+					continue
+				}
+				if startTs.Before(dayStart) {
+					startTs = dayStart
+				}
+				if endTs.After(dayEnd) {
+					endTs = dayEnd
+				}
+				seg := WeekSegment{
+					StartHour: startTs.Sub(dayStart).Hours(),
+					EndHour:   endTs.Sub(dayStart).Hours(),
+					IsWork:    ev.IsWork,
+				}
+				if seg.EndHour > seg.StartHour {
+					seg.LeftPct = (seg.StartHour / 24.0) * 100.0
+					seg.WidthPct = ((seg.EndHour - seg.StartHour) / 24.0) * 100.0
+					daySegs = append(daySegs, seg)
+					dur := seg.EndHour - seg.StartHour
+					if seg.IsWork {
+						workHours += dur
+					} else {
+						breakHours += dur
+					}
+				}
+			}
+			_ = k // avoid unused if compiled differently
+		}
+		day.Segments = daySegs
+		day.WorkHours = workHours
+		day.BreakHours = breakHours
+		days = append(days, day)
+	}
+	return days
+}
+
+// parseDBTimeInLoc parses timestamps from DB that might be in RFC3339 or '2006-01-02 15:04:05' format
+func parseDBTimeInLoc(s string, loc *time.Location) time.Time {
+	if s == "" {
+		return time.Now().In(loc)
+	}
+	if t, err := time.ParseInLocation(time.RFC3339, s, loc); err == nil {
+		return t
+	}
+	if t, err := time.ParseInLocation("2006-01-02 15:04:05", s, loc); err == nil {
+		return t
+	}
+	// try without location
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.In(loc)
+	}
+	if t, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
+		return t.In(loc)
+	}
+	return time.Now().In(loc)
+}
+
 // getCalendarData generates calendar data for a specific month with optional filters
 func getCalendarData(targetDate time.Time, userFilter, activityFilter string) CalendarMonth {
 	year := targetDate.Year()
@@ -560,7 +731,9 @@ func getCalendarData(targetDate time.Time, userFilter, activityFilter string) Ca
 	entriesByDate := make(map[string][]CalendarEntry)
 	for _, entry := range entries {
 		dateKey := entry.Date[:10] // Extract YYYY-MM-DD part
-		entriesByDate[dateKey] = append(entriesByDate[dateKey], entry)
+		if entry.IsWork {
+			entriesByDate[dateKey] = append(entriesByDate[dateKey], entry)
+		}
 	}
 
 	// Build calendar structure
@@ -577,7 +750,9 @@ func getCalendarData(targetDate time.Time, userFilter, activityFilter string) Ca
 
 			totalHours := 0.0
 			for _, entry := range dayEntries {
-				totalHours += entry.Hours
+				if entry.IsWork {
+					totalHours += entry.Hours
+				}
 			}
 
 			day := CalendarDay{
