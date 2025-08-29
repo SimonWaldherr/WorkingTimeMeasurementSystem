@@ -1145,6 +1145,16 @@ type UserActivitySummary struct {
 	Status          string
 }
 
+// Daily per-user activity used for dashboard drill-down
+type UserDailyActivity struct {
+	UserName     string
+	Department   string
+	WorkHours    float64
+	BreakHours   float64
+	LastActivity string
+	Status       string
+}
+
 type EntryDetail struct {
 	ID         int
 	UserID     int
@@ -1325,6 +1335,139 @@ func getUserActivitySummary() []UserActivitySummary {
 	return list
 }
 
+// getUsersByDepartmentOnDay returns users in a department with their work/break hours on a specific day (YYYY-MM-DD)
+func getUsersByDepartmentOnDay(deptName, day string) []UserDailyActivity {
+	db := getDB()
+	defer db.Close()
+
+	query := fmt.Sprintf(`
+		SELECT 
+			u.name AS user_name,
+			COALESCE(d.name, 'No Department') AS department,
+			COALESCE(SUM(CASE WHEN t.work = 1 THEN 
+				(JULIANDAY(
+					COALESCE(
+						(SELECT MIN(next_e.date) FROM %s next_e 
+						 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
+						datetime('now')
+					)
+				) - JULIANDAY(e.date)) * 24
+			ELSE 0 END), 0) AS work_hours,
+			COALESCE(SUM(CASE WHEN t.work = 0 THEN 
+				(JULIANDAY(
+					COALESCE(
+						(SELECT MIN(next_e.date) FROM %s next_e 
+						 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
+						datetime('now')
+					)
+				) - JULIANDAY(e.date)) * 24
+			ELSE 0 END), 0) AS break_hours,
+			MAX(e.date) AS last_activity,
+			COALESCE((
+				SELECT t2.status FROM %s e2
+				JOIN %s t2 ON e2.type_id = t2.id
+				WHERE e2.user_id = u.id AND DATE(e2.date) = ?
+				ORDER BY e2.date DESC LIMIT 1
+			), '') AS status
+		FROM %s u
+		LEFT JOIN %s d ON u.department_id = d.id
+		LEFT JOIN %s e ON u.id = e.user_id AND DATE(e.date) = ?
+		LEFT JOIN %s t ON e.type_id = t.id
+		WHERE d.name = ?
+		GROUP BY u.id, u.name, d.name
+		ORDER BY work_hours DESC
+	`, tbl("entries"), tbl("entries"), tbl("entries"), tbl("type"), tbl("users"), tbl("departments"), tbl("entries"), tbl("type"))
+
+	rows, err := db.Query(query, day, day, deptName)
+	if err != nil {
+		log.Printf("Query users by department/day failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var list []UserDailyActivity
+	for rows.Next() {
+		var u UserDailyActivity
+		if err := rows.Scan(&u.UserName, &u.Department, &u.WorkHours, &u.BreakHours, &u.LastActivity, &u.Status); err != nil {
+			log.Printf("Scan user daily activity failed: %v", err)
+			continue
+		}
+		list = append(list, u)
+	}
+	return list
+}
+
+// getUserActivitySummaryByDepartment filters overall user activity by department name
+func getUserActivitySummaryByDepartment(deptName string) []UserActivitySummary {
+	all := getUserActivitySummary()
+	if deptName == "" {
+		return all
+	}
+	out := make([]UserActivitySummary, 0, len(all))
+	for _, u := range all {
+		if u.Department == deptName {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// getDepartmentSummaryOnDay computes per-department hours for a specific day (YYYY-MM-DD)
+func getDepartmentSummaryOnDay(day string) []DepartmentSummary {
+	db := getDB()
+	defer db.Close()
+
+	query := fmt.Sprintf(`
+		SELECT 
+			d.name AS department_name,
+			COUNT(DISTINCT u.id) AS total_users,
+			COALESCE(SUM(CASE WHEN t.work = 1 THEN 
+				(JULIANDAY(
+					COALESCE(
+						(SELECT MIN(next_e.date) FROM %s next_e 
+						 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
+						datetime('now')
+					)
+				) - JULIANDAY(e.date)) * 24
+			ELSE 0 END), 0) AS total_hours,
+			CASE WHEN COUNT(DISTINCT u.id) > 0 
+				THEN COALESCE(SUM(CASE WHEN t.work = 1 THEN 
+					(JULIANDAY(
+						COALESCE(
+							(SELECT MIN(next_e.date) FROM %s next_e 
+							 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
+							datetime('now')
+						)
+					) - JULIANDAY(e.date)) * 24
+				ELSE 0 END), 0) / COUNT(DISTINCT u.id)
+				ELSE 0 END AS avg_hours_per_user
+		FROM %s d
+		LEFT JOIN %s u ON d.id = u.department_id
+		LEFT JOIN %s e ON u.id = e.user_id AND DATE(e.date) = ?
+		LEFT JOIN %s t ON e.type_id = t.id
+		GROUP BY d.id, d.name
+		ORDER BY total_hours DESC
+	`, tbl("entries"), tbl("entries"), tbl("departments"), tbl("users"), tbl("entries"), tbl("type"))
+
+	rows, err := db.Query(query, day)
+	if err != nil {
+		log.Printf("Query department summary on day failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var list []DepartmentSummary
+	for rows.Next() {
+		var d DepartmentSummary
+		if err := rows.Scan(&d.DepartmentName, &d.TotalUsers, &d.TotalHours, &d.AvgHoursPerUser); err != nil {
+			log.Printf("Scan department summary on day failed: %v", err)
+			continue
+		}
+		list = append(list, d)
+	}
+	return list
+}
+
 func getEntriesWithDetails() []EntryDetail {
 	db := getDB()
 	defer db.Close()
@@ -1374,6 +1517,63 @@ func getEntriesWithDetails() []EntryDetail {
 		var e EntryDetail
 		if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
 			log.Printf("Scan entry detail failed: %v", err)
+			continue
+		}
+		list = append(list, e)
+	}
+	return list
+}
+
+// getEntriesForDepartmentOnDay returns entry details for a department on a specific day (YYYY-MM-DD)
+func getEntriesForDepartmentOnDay(deptName, day string) []EntryDetail {
+	db := getDB()
+	defer db.Close()
+
+	query := fmt.Sprintf(`
+		SELECT 
+			e.id,
+			u.id as user_id,
+			u.name as user_name,
+			COALESCE(d.name, 'No Department') as department,
+			t.id as activity_id,
+			t.status as activity,
+			e.date,
+			e.date as start_time,
+			COALESCE(
+				(SELECT MIN(next_e.date) FROM %s next_e 
+				 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
+				datetime('now')
+			) as end_time,
+			COALESCE(
+				(JULIANDAY(
+					COALESCE(
+						(SELECT MIN(next_e.date) FROM %s next_e 
+						 WHERE next_e.user_id = e.user_id AND next_e.date > e.date), 
+						datetime('now')
+					)
+				) - JULIANDAY(e.date)) * 24, 0
+			) as duration,
+			COALESCE(e.comment, '') as comment
+		FROM %s e
+		JOIN %s u ON e.user_id = u.id
+		LEFT JOIN %s d ON u.department_id = d.id
+		JOIN %s t ON e.type_id = t.id
+		WHERE DATE(e.date) = ? AND d.name = ?
+		ORDER BY u.name ASC, e.date ASC
+	`, tbl("entries"), tbl("entries"), tbl("entries"), tbl("users"), tbl("departments"), tbl("type"))
+
+	rows, err := db.Query(query, day, deptName)
+	if err != nil {
+		log.Printf("Query entries for dept/day failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var list []EntryDetail
+	for rows.Next() {
+		var e EntryDetail
+		if err := rows.Scan(&e.ID, &e.UserID, &e.UserName, &e.Department, &e.ActivityID, &e.Activity, &e.Date, &e.Start, &e.End, &e.Duration, &e.Comment); err != nil {
+			log.Printf("Scan entry detail (dept/day) failed: %v", err)
 			continue
 		}
 		list = append(list, e)

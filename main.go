@@ -208,7 +208,7 @@ func main() {
 	mux.Handle("/addActivity", basicAuthMiddleware(users, http.HandlerFunc(addActivityHandler)))
 	mux.Handle("/addDepartment", basicAuthMiddleware(users, http.HandlerFunc(addDepartmentHandler)))
 	mux.Handle("/clockInOutForm", http.HandlerFunc(clockInOutForm))
-	mux.Handle("/current_status", http.HandlerFunc(currentStatusHandler))
+	mux.Handle("/current_status", basicAuthMiddleware(users, http.HandlerFunc(currentStatusHandler)))
 
 	// protected actions
 	mux.Handle("/createUser", basicAuthMiddleware(users, http.HandlerFunc(createUserHandler)))
@@ -1097,9 +1097,62 @@ func bulkClockHandler(w http.ResponseWriter, r *http.Request) {
 
 // Enhanced dashboard handler
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	deptSummary := getDepartmentSummary()
+	// Interaction parameters
+	selectedDept := r.URL.Query().Get("dept")
+	selectedDay := r.URL.Query().Get("day") // YYYY-MM-DD
+
+	// Default day = most recent trend day if not provided
 	timeTrends := getTimeTrackingTrends(30) // Last 30 days
-	userActivity := getUserActivitySummary()
+	if selectedDay == "" && len(timeTrends) > 0 {
+		// trends are ordered DESC by date; take first
+		// ensure it's just a date (YYYY-MM-DD)
+		if len(timeTrends[0].Date) >= 10 {
+			selectedDay = timeTrends[0].Date[:10]
+		}
+	}
+
+	// Summary panels
+	var deptSummary []DepartmentSummary
+	if selectedDay != "" {
+		deptSummary = getDepartmentSummaryOnDay(selectedDay)
+	} else {
+		deptSummary = getDepartmentSummary()
+	}
+
+	// If exactly one department, implicitly select it when none specified
+	if selectedDept == "" && len(deptSummary) == 1 {
+		selectedDept = deptSummary[0].DepartmentName
+	}
+
+	// Right panel user list behavior
+	var userActivity []UserActivitySummary
+	var userDayDetails []EntryDetail
+	if selectedDept != "" {
+		// If a day is selected, show per-user daily activity for that department
+		// else show overall user activity filtered by department
+		if selectedDay != "" {
+			// We'll feed a simplified list by mapping to UserActivitySummary-like shape for the template
+			daily := getUsersByDepartmentOnDay(selectedDept, selectedDay)
+			// map to template-friendly struct
+			userActivity = make([]UserActivitySummary, 0, len(daily))
+			for _, d := range daily {
+				userActivity = append(userActivity, UserActivitySummary{
+					UserName:       d.UserName,
+					Department:     d.Department,
+					TotalWorkHours: d.WorkHours,
+					TotalBreakHours: d.BreakHours,
+					LastActivity:   d.LastActivity,
+					Status:         d.Status,
+				})
+			}
+			// Also provide raw entry details for the selected dept/day
+			userDayDetails = getEntriesForDepartmentOnDay(selectedDept, selectedDay)
+		} else {
+			userActivity = getUserActivitySummaryByDepartment(selectedDept)
+		}
+	} else {
+		userActivity = getUserActivitySummary()
+	}
 
 	// Calculate quick stats
 	var totalUsers, totalHours, activeUsers int
@@ -1125,6 +1178,9 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		DepartmentSummary []DepartmentSummary
 		TimeTrends        []TimeTrackingTrend
 		UserActivity      []UserActivitySummary
+		SelectedDept      string
+		SelectedDay       string
+		UserDayDetails    []EntryDetail
 		QuickStats        struct {
 			TotalUsers      int
 			TotalHours      int
@@ -1135,6 +1191,9 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		DepartmentSummary: deptSummary,
 		TimeTrends:        timeTrends,
 		UserActivity:      userActivity,
+	SelectedDept:      selectedDept,
+	SelectedDay:       selectedDay,
+	UserDayDetails:    userDayDetails,
 		QuickStats: struct {
 			TotalUsers      int
 			TotalHours      int
